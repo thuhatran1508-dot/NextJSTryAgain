@@ -7,6 +7,7 @@ import { SiteFooter } from "@/components/site-footer";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { ThemeCustomizer } from "@/components/theme-customizer";
 import { useSidebarConfig } from "@/hooks/use-sidebar-config";
+import { Toaster } from "@/components/ui/sonner";
 
 export default function DashboardLayout({
   children,
@@ -69,6 +70,7 @@ export default function DashboardLayout({
         open={themeCustomizerOpen}
         onOpenChange={setThemeCustomizerOpen}
       />
+      <Toaster />
     </SidebarProvider>
   );
 }

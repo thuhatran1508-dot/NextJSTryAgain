@@ -1,0 +1,86 @@
+import { itemCodeListSchema } from "./types/item-code-list-types"
+
+const itemCodeListData = [
+  {
+    id: "ICL-0001",
+    MAVCode: "MAV-001-A",
+    MHBCode: "MHB-001-A",
+    IzuyoshiJPCode: "IZU-JP-001",
+    IzuyoshiVNCode: "IZU-VN-001",
+    Description: "Steel Bearing 25mm x 50mm - High Precision",
+  },
+  {
+    id: "ICL-0002",
+    MAVCode: "MAV-002-B",
+    MHBCode: "MHB-002-B",
+    IzuyoshiJPCode: "IZU-JP-002",
+    IzuyoshiVNCode: "IZU-VN-002",
+    Description: "Aluminum Plate 100mm x 200mm x 5mm",
+  },
+  {
+    id: "ICL-0003",
+    MAVCode: "MAV-003-C",
+    MHBCode: "MHB-003-C",
+    IzuyoshiJPCode: "IZU-JP-003",
+    IzuyoshiVNCode: "IZU-VN-003",
+    Description: "Copper Wire 2.5mm - 100m Roll",
+  },
+  {
+    id: "ICL-0004",
+    MAVCode: "MAV-004-D",
+    MHBCode: "MHB-004-D",
+    IzuyoshiJPCode: "IZU-JP-004",
+    IzuyoshiVNCode: "IZU-VN-004",
+    Description: "Rubber Gasket Set - Industrial Grade",
+  },
+  {
+    id: "ICL-0005",
+    MAVCode: "MAV-005-E",
+    MHBCode: "MHB-005-E",
+    IzuyoshiJPCode: "IZU-JP-005",
+    IzuyoshiVNCode: "IZU-VN-005",
+    Description: "Stainless Steel Bolt M10 x 50mm - Pack of 50",
+  },
+  {
+    id: "ICL-0006",
+    MAVCode: "MAV-006-F",
+    MHBCode: "MHB-006-F",
+    IzuyoshiJPCode: "IZU-JP-006",
+    IzuyoshiVNCode: "IZU-VN-006",
+    Description: "Hydraulic Hose 3/4 inch - 5m Length",
+  },
+  {
+    id: "ICL-0007",
+    MAVCode: "MAV-007-G",
+    MHBCode: "MHB-007-G",
+    IzuyoshiJPCode: "IZU-JP-007",
+    IzuyoshiVNCode: "IZU-VN-007",
+    Description: "Electric Motor 1.5kW - 3 Phase",
+  },
+  {
+    id: "ICL-0008",
+    MAVCode: "MAV-008-H",
+    MHBCode: "MHB-008-H",
+    IzuyoshiJPCode: "IZU-JP-008",
+    IzuyoshiVNCode: "IZU-VN-008",
+    Description: "PVC Pipe 50mm diameter - 3m Length",
+  },
+  {
+    id: "ICL-0009",
+    MAVCode: "MAV-009-I",
+    MHBCode: "MHB-009-I",
+    IzuyoshiJPCode: "IZU-JP-009",
+    IzuyoshiVNCode: "IZU-VN-009",
+    Description: "Carbon Filter Element - 10 Micron",
+  },
+  {
+    id: "ICL-0010",
+    MAVCode: "MAV-010-J",
+    MHBCode: "MHB-010-J",
+    IzuyoshiJPCode: "IZU-JP-010",
+    IzuyoshiVNCode: "IZU-VN-010",
+    Description: "Titanium Alloy Sheet 2mm x 500mm x 500mm",
+  },
+]
+
+export const itemCodeListMockData = itemCodeListSchema.array().parse(itemCodeListData)
