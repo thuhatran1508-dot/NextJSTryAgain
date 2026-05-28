@@ -24,7 +24,7 @@ export function DataTableToolbar<TData>({
 }: DataTableToolbarProps<TData>) {
   const isFiltered =
     table.getState().columnFilters.length > 0 ||
-    table.getState().globalFilter.length > 0
+    (table.getState().globalFilter?.length ?? 0) > 0
 
   return (
     <div className="space-y-4">
