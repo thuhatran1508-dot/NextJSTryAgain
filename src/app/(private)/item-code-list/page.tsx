@@ -75,6 +75,21 @@ export default function ItemCodeListPage() {
     []
   )
 
+  const handleImportItems = useCallback(
+    async (newItems: ItemCodeList[]) => {
+      const results = await Promise.allSettled(
+        newItems.map((item) => createItemCodeList(item))
+      )
+      const successCount = results.filter((r) => r.status === "fulfilled").length
+      const failCount = results.filter((r) => r.status === "rejected").length
+      if (failCount > 0) {
+        toast.warning(`Imported ${successCount} items, ${failCount} failed`)
+      }
+      await refreshItems()
+    },
+    [refreshItems]
+  )
+
   const columns = getItemCodeListColumns({
     onUpdateItem: handleUpdateItem,
     onDeleteItem: handleDeleteItem,
@@ -102,6 +117,7 @@ export default function ItemCodeListPage() {
           columns={columns}
           data={items}
           onAddItem={handleAddItem}
+          onImportItems={handleImportItems}
           onSeedItems={handleSeedItems}
           isSeedingItems={isSeedingItems}
         />

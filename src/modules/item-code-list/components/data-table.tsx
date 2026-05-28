@@ -34,6 +34,7 @@ interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[]
   data: TData[]
   onAddItem?: (item: ItemCodeList) => void | Promise<void>
+  onImportItems?: (items: ItemCodeList[]) => void | Promise<void>
   onSeedItems?: () => void | Promise<void>
   isSeedingItems?: boolean
 }
@@ -42,6 +43,7 @@ export function DataTable<TData, TValue>({
   columns,
   data,
   onAddItem,
+  onImportItems,
   onSeedItems,
   isSeedingItems,
 }: DataTableProps<TData, TValue>) {
@@ -96,6 +98,7 @@ export function DataTable<TData, TValue>({
       <DataTableToolbar
         table={table}
         onAddItem={onAddItem}
+        onImportItems={onImportItems}
         onSeedItems={onSeedItems}
         isSeedingItems={isSeedingItems}
       />
