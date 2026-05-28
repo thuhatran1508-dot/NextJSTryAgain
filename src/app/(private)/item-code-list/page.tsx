@@ -29,6 +29,8 @@ export default function ItemCodeListPage() {
       try {
         await refreshItems()
       } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to load ItemCodeList"
+        toast.error(message)
         console.error("Failed to load ItemCodeList:", error)
       } finally {
         setLoading(false)

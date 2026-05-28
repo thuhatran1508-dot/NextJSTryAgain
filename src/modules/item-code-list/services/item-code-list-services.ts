@@ -45,19 +45,36 @@ function normalizeItem(docId: string, data: Record<string, unknown>): ItemCodeLi
 
 export async function getItemCodeList(): Promise<ItemCodeList[]> {
   const db = getFirestoreSafe()
-  if (!db) return itemCodeListMockData
+  if (!db) {
+    console.warn("Firebase not configured. Using mock data.")
+    return itemCodeListMockData
+  }
 
   try {
     const snapshot = await getDocs(collection(db, ITEM_CODE_LIST_COLLECTION))
 
     if (snapshot.empty) {
+      console.warn("ItemCodeList collection is empty. Using mock data.")
       return itemCodeListMockData
     }
 
     return snapshot.docs.map((document) =>
       normalizeItem(document.id, document.data() as Record<string, unknown>)
     )
-  } catch (error) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error)
+    const isPermissionError =
+      message.includes("Missing or insufficient permissions") ||
+      message.includes("permission") ||
+      message.includes("PERMISSION_DENIED") ||
+      message.includes("insufficient")
+
+    if (isPermissionError) {
+      throw new Error(
+        `Không có quyền đọc collection "${ITEM_CODE_LIST_COLLECTION}". Vui lòng kiểm tra Firestore security rules hoặc đăng nhập.`
+      )
+    }
+
     console.warn("Failed to load ItemCodeList from Firestore, using mock data.", error)
     return itemCodeListMockData
   }
