@@ -151,7 +151,9 @@ export async function bulkCreateItemCodeList(
 ): Promise<{ success: number; failed: number }> {
   const db = getFirestoreSafe()
   if (!db) {
-    return { success: 0, failed: items.length }
+    throw new Error(
+      "Firebase is not configured. Please set NEXT_PUBLIC_FIREBASE_* environment variables."
+    )
   }
 
   const batch = writeBatch(db)
