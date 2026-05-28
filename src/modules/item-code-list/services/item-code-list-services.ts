@@ -64,18 +64,19 @@ export async function getItemCodeList(): Promise<ItemCodeList[]> {
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error)
     const isPermissionError =
-      message.includes("Missing or insufficient permissions") ||
       message.includes("permission") ||
       message.includes("PERMISSION_DENIED") ||
       message.includes("insufficient")
 
     if (isPermissionError) {
-      throw new Error(
-        `Không có quyền đọc collection "${ITEM_CODE_LIST_COLLECTION}". Vui lòng kiểm tra Firestore security rules hoặc đăng nhập.`
+      console.error(
+        `[ItemCodeList] Permission denied when reading "${ITEM_CODE_LIST_COLLECTION}". ` +
+        `Firestore security rules is blocking read access. ` +
+        `Please update your Firestore rules to allow read on collection "${ITEM_CODE_LIST_COLLECTION}".`
       )
+    } else {
+      console.warn("Failed to load ItemCodeList from Firestore, using mock data.", error)
     }
-
-    console.warn("Failed to load ItemCodeList from Firestore, using mock data.", error)
     return itemCodeListMockData
   }
 }
