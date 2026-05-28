@@ -1,7 +1,7 @@
 "use client"
 
 import type { Table } from "@tanstack/react-table"
-import { Database, RefreshCcw } from "lucide-react"
+import { Database, RefreshCcw, Search } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -22,28 +22,36 @@ export function DataTableToolbar<TData>({
   onSeedItems,
   isSeedingItems,
 }: DataTableToolbarProps<TData>) {
-  const isFiltered = table.getState().columnFilters.length > 0
+  const isFiltered =
+    table.getState().columnFilters.length > 0 ||
+    table.getState().globalFilter.length > 0
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex flex-1 items-center space-x-2">
-          <Input
-            placeholder="Search description..."
-            value={(table.getColumn("Description")?.getFilterValue() as string) ?? ""}
-            onChange={(event) =>
-              table.getColumn("Description")?.setFilterValue(event.target.value)
-            }
-            className=" w-[200px] lg:w-[300px] cursor-text"
-          />
+          <div className="relative">
+            <Search className="text-muted-foreground absolute left-2.5 top-2.5 h-4 w-4 pointer-events-none" />
+            <Input
+              placeholder="Search all columns..."
+              value={table.getState().globalFilter ?? ""}
+              onChange={(event) =>
+                table.setGlobalFilter(event.target.value)
+              }
+              className="pl-8 w-[240px] lg:w-[320px] cursor-text"
+            />
+          </div>
           <Button
             variant="outline"
-            onClick={() => table.resetColumnFilters()}
+            onClick={() => {
+              table.resetColumnFilters()
+              table.resetGlobalFilter()
+            }}
             className="px-3 cursor-pointer"
             disabled={!isFiltered}
           >
             <RefreshCcw className="h-4 w-4" />
-            <span className="hidden lg:block">Reset Filters</span>
+            <span className="hidden lg:block">Reset</span>
           </Button>
         </div>
         <div className="flex items-center space-x-2">

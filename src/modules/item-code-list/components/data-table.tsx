@@ -14,6 +14,7 @@ import {
   getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
+  type FilterFn,
 } from "@tanstack/react-table"
 
 import {
@@ -52,6 +53,14 @@ export function DataTable<TData, TValue>({
   )
   const [sorting, setSorting] = React.useState<SortingState>([])
 
+  const globalFilterFn: FilterFn<TData> = (row, columnId, filterValue) => {
+    const search = String(filterValue).toLowerCase()
+    const rowValues = Object.values(row.original as Record<string, unknown>)
+      .map((v) => String(v ?? "").toLowerCase())
+      .join(" ")
+    return rowValues.includes(search)
+  }
+
   const table = useReactTable({
     data,
     columns,
@@ -62,6 +71,7 @@ export function DataTable<TData, TValue>({
       columnFilters,
     },
     enableRowSelection: true,
+    globalFilterFn,
     onRowSelectionChange: setRowSelection,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
@@ -82,9 +92,9 @@ export function DataTable<TData, TValue>({
         onSeedItems={onSeedItems}
         isSeedingItems={isSeedingItems}
       />
-      <div className="rounded-md border">
+      <div className="rounded-md border overflow-auto max-h-[calc(100vh-18rem)]">
         <Table>
-          <TableHeader>
+          <TableHeader className="sticky top-0 z-10 bg-background shadow-sm">
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {
