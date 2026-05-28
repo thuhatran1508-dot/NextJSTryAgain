@@ -11,7 +11,7 @@ import {
   type Timestamp,
 } from "firebase/firestore"
 
-import { db } from "@/lib/firebase/client"
+import { getFirestoreSafe } from "@/lib/firebase/client"
 import { itemCodeListMockData } from "./item-code-list-mock-data"
 import type { ItemCodeList } from "./types/item-code-list-types"
 
@@ -44,6 +44,9 @@ function normalizeItem(docId: string, data: Record<string, unknown>): ItemCodeLi
 }
 
 export async function getItemCodeList(): Promise<ItemCodeList[]> {
+  const db = getFirestoreSafe()
+  if (!db) return itemCodeListMockData
+
   try {
     const snapshot = await getDocs(collection(db, ITEM_CODE_LIST_COLLECTION))
 
@@ -61,6 +64,9 @@ export async function getItemCodeList(): Promise<ItemCodeList[]> {
 }
 
 export async function seedItemCodeListWithClient(): Promise<ItemCodeList[]> {
+  const db = getFirestoreSafe()
+  if (!db) return itemCodeListMockData
+
   const batch = writeBatch(db)
 
   itemCodeListMockData.forEach((item) => {
@@ -72,6 +78,9 @@ export async function seedItemCodeListWithClient(): Promise<ItemCodeList[]> {
 }
 
 export async function createItemCodeList(item: ItemCodeList): Promise<ItemCodeList> {
+  const db = getFirestoreSafe()
+  if (!db) return item
+
   await setDoc(doc(db, ITEM_CODE_LIST_COLLECTION, item.id), {
     documentId: item.documentId || item.id,
     baseDocumentId: item.baseDocumentId || item.id,
@@ -85,6 +94,9 @@ export async function createItemCodeList(item: ItemCodeList): Promise<ItemCodeLi
 }
 
 export async function updateItemCodeList(item: ItemCodeList): Promise<ItemCodeList> {
+  const db = getFirestoreSafe()
+  if (!db) return item
+
   await updateDoc(doc(db, ITEM_CODE_LIST_COLLECTION, item.id), {
     MHBCode: item.MHBCode,
     IzuyoshiJPCode: item.IzuyoshiJPCode,
@@ -95,5 +107,8 @@ export async function updateItemCodeList(item: ItemCodeList): Promise<ItemCodeLi
 }
 
 export async function deleteItemCodeList(itemId: string): Promise<void> {
+  const db = getFirestoreSafe()
+  if (!db) return
+
   await deleteDoc(doc(db, ITEM_CODE_LIST_COLLECTION, itemId))
 }

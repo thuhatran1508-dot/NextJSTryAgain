@@ -8,13 +8,16 @@ import {
   writeBatch,
 } from "firebase/firestore"
 
-import { db } from "@/lib/firebase/client"
+import { getFirestoreSafe } from "@/lib/firebase/client"
 import { taskMockData } from "./task-mock-data"
 import type { Task } from "./types/task-types"
 
 const TASKS_COLLECTION = "tasks"
 
 export async function getTasks(): Promise<Task[]> {
+  const db = getFirestoreSafe()
+  if (!db) return taskMockData
+
   const snapshot = await getDocs(collection(db, TASKS_COLLECTION))
 
   const result = snapshot.docs.map((document) => {
@@ -30,6 +33,9 @@ export async function getTasks(): Promise<Task[]> {
 }
 
 export async function seedTasksWithClient(): Promise<Task[]> {
+  const db = getFirestoreSafe()
+  if (!db) return taskMockData
+
   const batch = writeBatch(db)
 
   taskMockData.forEach((task) => {
@@ -41,18 +47,27 @@ export async function seedTasksWithClient(): Promise<Task[]> {
 }
 
 export async function createTask(task: Task): Promise<Task> {
+  const db = getFirestoreSafe()
+  if (!db) return task
+
   await setDoc(doc(db, TASKS_COLLECTION, task.id), task)
 
   return task
 }
 
 export async function updateTask(task: Task): Promise<Task> {
+  const db = getFirestoreSafe()
+  if (!db) return task
+
   await updateDoc(doc(db, TASKS_COLLECTION, task.id), task)
 
   return task
 }
 
 export async function deleteTask(taskId: string): Promise<void> {
+  const db = getFirestoreSafe()
+  if (!db) return
+
   await deleteDoc(doc(db, TASKS_COLLECTION, taskId))
 }
 

@@ -3,7 +3,7 @@
 import * as React from "react"
 import { useSession } from "next-auth/react"
 import { signInWithCustomToken, signOut as firebaseSignOut } from "firebase/auth"
-import { auth } from "@/lib/firebase/client"
+import { getAuthSafe } from "@/lib/firebase/client"
 
 export function FirebaseSessionSync({
   children,
@@ -13,11 +13,12 @@ export function FirebaseSessionSync({
   const { data: session, status } = useSession()
 
   React.useEffect(() => {
+    const auth = getAuthSafe()
+    if (!auth) return
+
     const syncAuth = async () => {
       if (status === "authenticated" && session?.firebaseToken) {
         const currentUser = auth.currentUser
-        // Only trigger client-side Firebase Auth sign-in if the user is not signed in
-        // or if they are signed in as a different user.
         if (!currentUser || currentUser.uid !== session.user.id) {
           try {
             await signInWithCustomToken(auth, session.firebaseToken)
@@ -27,7 +28,6 @@ export function FirebaseSessionSync({
           }
         }
       } else if (status === "unauthenticated") {
-        // If the user logs out from NextAuth, ensure they are also logged out from Firebase Client
         if (auth.currentUser) {
           try {
             await firebaseSignOut(auth)

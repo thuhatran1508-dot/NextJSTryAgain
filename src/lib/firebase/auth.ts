@@ -8,13 +8,17 @@ import {
   updateProfile,
 } from "firebase/auth"
 
-import { auth } from "@/lib/firebase/client"
+import { getAuthSafe } from "@/lib/firebase/client"
 
 export async function signInWithEmailPassword(email: string, password: string) {
+  const auth = getAuthSafe()
+  if (!auth) throw new Error("Firebase is not configured")
   return signInWithEmailAndPassword(auth, email, password)
 }
 
 export async function signInWithGoogle() {
+  const auth = getAuthSafe()
+  if (!auth) throw new Error("Firebase is not configured")
   const provider = new GoogleAuthProvider()
   provider.setCustomParameters({
     prompt: "select_account",
@@ -24,6 +28,8 @@ export async function signInWithGoogle() {
 }
 
 export async function signOutUser() {
+  const auth = getAuthSafe()
+  if (!auth) return
   return signOut(auth)
 }
 
@@ -32,6 +38,8 @@ export async function signUpWithEmailPassword(
   password: string,
   displayName: string
 ) {
+  const auth = getAuthSafe()
+  if (!auth) throw new Error("Firebase is not configured")
   const credential = await createUserWithEmailAndPassword(auth, email, password)
   await updateProfile(credential.user, { displayName })
   return credential
