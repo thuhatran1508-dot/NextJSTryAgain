@@ -7,6 +7,7 @@ export const itemCodeListSchema = z.object({
   IzuyoshiJPCode: z.string(),
   IzuyoshiVNCode: z.string(),
   Description: z.string(),
+  updatedAt: z.string().optional(),
 })
 
 export type ItemCodeList = z.infer<typeof itemCodeListSchema>

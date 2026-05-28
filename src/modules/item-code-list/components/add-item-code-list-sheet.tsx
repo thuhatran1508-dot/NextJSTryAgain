@@ -20,8 +20,7 @@ import {
 import type { ItemCodeList } from "@/modules/item-code-list/services/types/item-code-list-types"
 
 const itemCodeListFormSchema = z.object({
-  MAVCode: z.string().min(1, "MAV Code is required"),
-  MHBCode: z.string().min(1, "MHB Code is required"),
+  MHBCode: z.string(),
   IzuyoshiJPCode: z.string().min(1, "Izuyoshi JP Code is required"),
   IzuyoshiVNCode: z.string().min(1, "Izuyoshi VN Code is required"),
   Description: z.string().min(1, "Description is required"),
@@ -40,7 +39,6 @@ export function AddItemCodeListSheet({
 }: AddItemCodeListSheetProps) {
   const [open, setOpen] = useState(false)
   const [formData, setFormData] = useState<ItemCodeListFormData>({
-    MAVCode: "",
     MHBCode: "",
     IzuyoshiJPCode: "",
     IzuyoshiVNCode: "",
@@ -49,26 +47,25 @@ export function AddItemCodeListSheet({
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  function generateItemId() {
-    return `ICL-${Date.now()}`
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setIsSubmitting(true)
 
     try {
       const validatedData = itemCodeListFormSchema.parse(formData)
-
+      // Document ID = IzuyoshiJPCode, MAVCode = IzuyoshiJPCode
       const newItem: ItemCodeList = {
-        id: generateItemId(),
-        ...validatedData,
+        id: validatedData.IzuyoshiJPCode,
+        MAVCode: validatedData.IzuyoshiJPCode,
+        MHBCode: validatedData.MHBCode,
+        IzuyoshiJPCode: validatedData.IzuyoshiJPCode,
+        IzuyoshiVNCode: validatedData.IzuyoshiVNCode,
+        Description: validatedData.Description,
       }
 
       await onAddItem?.(newItem)
 
       setFormData({
-        MAVCode: "",
         MHBCode: "",
         IzuyoshiJPCode: "",
         IzuyoshiVNCode: "",
@@ -96,7 +93,6 @@ export function AddItemCodeListSheet({
 
   function handleCancel() {
     setFormData({
-      MAVCode: "",
       MHBCode: "",
       IzuyoshiJPCode: "",
       IzuyoshiVNCode: "",
@@ -125,7 +121,7 @@ export function AddItemCodeListSheet({
         <SheetHeader>
           <SheetTitle>Add ItemCodeList</SheetTitle>
           <SheetDescription>
-            Create a new ItemCodeList entry. Fill in all required fields.
+            Create a new ItemCodeList entry. Document ID will be set to Izuyoshi JP Code.
           </SheetDescription>
         </SheetHeader>
 
@@ -136,44 +132,10 @@ export function AddItemCodeListSheet({
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="add-mavcode">MAV Code *</Label>
-              <Input
-                id="add-mavcode"
-                placeholder="MAV-XXX-X"
-                value={formData.MAVCode}
-                onChange={(e) =>
-                  setFormData((prev) => ({ ...prev, MAVCode: e.target.value }))
-                }
-                className={errors.MAVCode ? "border-red-500" : ""}
-              />
-              {errors.MAVCode && (
-                <p className="text-sm text-red-500">{errors.MAVCode}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="add-mhbcode">MHB Code *</Label>
-              <Input
-                id="add-mhbcode"
-                placeholder="MHB-XXX-X"
-                value={formData.MHBCode}
-                onChange={(e) =>
-                  setFormData((prev) => ({ ...prev, MHBCode: e.target.value }))
-                }
-                className={errors.MHBCode ? "border-red-500" : ""}
-              />
-              {errors.MHBCode && (
-                <p className="text-sm text-red-500">{errors.MHBCode}</p>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
               <Label htmlFor="add-izujp">Izuyoshi JP Code *</Label>
               <Input
                 id="add-izujp"
-                placeholder="IZU-JP-XXX"
+                placeholder="Jcode0018"
                 value={formData.IzuyoshiJPCode}
                 onChange={(e) =>
                   setFormData((prev) => ({
@@ -189,23 +151,35 @@ export function AddItemCodeListSheet({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="add-izuvn">Izuyoshi VN Code *</Label>
+              <Label htmlFor="add-mhbcode">MHB Code</Label>
               <Input
-                id="add-izuvn"
-                placeholder="IZU-VN-XXX"
-                value={formData.IzuyoshiVNCode}
+                id="add-mhbcode"
+                placeholder="MHB-XXX-X"
+                value={formData.MHBCode}
                 onChange={(e) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    IzuyoshiVNCode: e.target.value,
-                  }))
+                  setFormData((prev) => ({ ...prev, MHBCode: e.target.value }))
                 }
-                className={errors.IzuyoshiVNCode ? "border-red-500" : ""}
               />
-              {errors.IzuyoshiVNCode && (
-                <p className="text-sm text-red-500">{errors.IzuyoshiVNCode}</p>
-              )}
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="add-izuvn">Izuyoshi VN Code *</Label>
+            <Input
+              id="add-izuvn"
+              placeholder="VNcode0018"
+              value={formData.IzuyoshiVNCode}
+              onChange={(e) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  IzuyoshiVNCode: e.target.value,
+                }))
+              }
+              className={errors.IzuyoshiVNCode ? "border-red-500" : ""}
+            />
+            {errors.IzuyoshiVNCode && (
+              <p className="text-sm text-red-500">{errors.IzuyoshiVNCode}</p>
+            )}
           </div>
 
           <div className="space-y-2">

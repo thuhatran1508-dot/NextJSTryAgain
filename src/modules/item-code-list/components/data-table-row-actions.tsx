@@ -196,16 +196,8 @@ export function DataTableRowActions<TData>({
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor={`edit-mavcode-${item.id}`}>MAV Code</Label>
-                  <Input
-                    id={`edit-mavcode-${item.id}`}
-                    value={draft.MAVCode}
-                    onChange={(e) =>
-                      setDraft((current) =>
-                        current ? { ...current, MAVCode: e.target.value } : current
-                      )
-                    }
-                  />
+                  <Label className="text-muted-foreground text-xs uppercase">MAV Code (Document ID)</Label>
+                  <p className="mt-1 font-medium text-sm">{draft.MAVCode}</p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor={`edit-mhbcode-${item.id}`}>MHB Code</Label>
@@ -223,16 +215,8 @@ export function DataTableRowActions<TData>({
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor={`edit-izujp-${item.id}`}>Izuyoshi JP Code</Label>
-                  <Input
-                    id={`edit-izujp-${item.id}`}
-                    value={draft.IzuyoshiJPCode}
-                    onChange={(e) =>
-                      setDraft((current) =>
-                        current ? { ...current, IzuyoshiJPCode: e.target.value } : current
-                      )
-                    }
-                  />
+                  <Label className="text-muted-foreground text-xs uppercase">Izuyoshi JP Code (Document ID)</Label>
+                  <p className="mt-1 font-medium text-sm">{draft.IzuyoshiJPCode}</p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor={`edit-izuvn-${item.id}`}>Izuyoshi VN Code</Label>
