@@ -20,6 +20,7 @@ import {
 import type { ItemCodeList } from "@/modules/item-code-list/services/types/item-code-list-types"
 
 const itemCodeListFormSchema = z.object({
+  MAVCode: z.string().min(1, "MAV Code is required"),
   MHBCode: z.string(),
   IzuyoshiJPCode: z.string().min(1, "Izuyoshi JP Code is required"),
   IzuyoshiVNCode: z.string().min(1, "Izuyoshi VN Code is required"),
@@ -39,6 +40,7 @@ export function AddItemCodeListSheet({
 }: AddItemCodeListSheetProps) {
   const [open, setOpen] = useState(false)
   const [formData, setFormData] = useState<ItemCodeListFormData>({
+    MAVCode: "",
     MHBCode: "",
     IzuyoshiJPCode: "",
     IzuyoshiVNCode: "",
@@ -53,12 +55,14 @@ export function AddItemCodeListSheet({
 
     try {
       const validatedData = itemCodeListFormSchema.parse(formData)
-      // Document ID = IzuyoshiJPCode, MAVCode = IzuyoshiJPCode
+      const docId = validatedData.IzuyoshiJPCode
       const newItem: ItemCodeList = {
-        id: validatedData.IzuyoshiJPCode,
-        MAVCode: validatedData.IzuyoshiJPCode,
+        id: docId,
+        documentId: docId,
+        baseDocumentId: docId,
+        MAVCode: validatedData.MAVCode,
         MHBCode: validatedData.MHBCode,
-        IzuyoshiJPCode: validatedData.IzuyoshiJPCode,
+        IzuyoshiJPCode: docId,
         IzuyoshiVNCode: validatedData.IzuyoshiVNCode,
         Description: validatedData.Description,
       }
@@ -66,6 +70,7 @@ export function AddItemCodeListSheet({
       await onAddItem?.(newItem)
 
       setFormData({
+        MAVCode: "",
         MHBCode: "",
         IzuyoshiJPCode: "",
         IzuyoshiVNCode: "",
@@ -93,6 +98,7 @@ export function AddItemCodeListSheet({
 
   function handleCancel() {
     setFormData({
+      MAVCode: "",
       MHBCode: "",
       IzuyoshiJPCode: "",
       IzuyoshiVNCode: "",
@@ -129,6 +135,25 @@ export function AddItemCodeListSheet({
           {errors.root ? (
             <p className="text-sm text-destructive">{errors.root}</p>
           ) : null}
+
+          <div className="space-y-2">
+            <Label htmlFor="add-mavcode">MAV Code *</Label>
+            <Input
+              id="add-mavcode"
+              placeholder="MAVcode001"
+              value={formData.MAVCode}
+              onChange={(e) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  MAVCode: e.target.value,
+                }))
+              }
+              className={errors.MAVCode ? "border-red-500" : ""}
+            />
+            {errors.MAVCode && (
+              <p className="text-sm text-red-500">{errors.MAVCode}</p>
+            )}
+          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">

@@ -3,22 +3,28 @@ import { itemCodeListSchema } from "./types/item-code-list-types"
 const itemCodeListData = [
   {
     id: "Jcode0018",
+    documentId: "Jcode0018",
+    baseDocumentId: "Jcode0018",
     MAVCode: "Jcode0018",
     MHBCode: "",
     IzuyoshiJPCode: "Jcode0018",
     IzuyoshiVNCode: "VNcode0018",
-    Description: "3CFCDABLH6 (リバース) C/#200 (オレンジ)",
+    Description: "白地に黒プリント　(特記事項参照)",
   },
   {
     id: "Jcode0019",
-    MAVCode: "Jcode0019",
+    documentId: "Jcode0019",
+    baseDocumentId: "Jcode0019",
+    MAVCode: "MAVcode019",
     MHBCode: "",
     IzuyoshiJPCode: "Jcode0019",
     IzuyoshiVNCode: "VNcode0019",
-    Description: "Steel Bearing 25mm x 50mm - High Precision",
+    Description: "白地に黒プリント　(特記事項参照)",
   },
   {
     id: "Jcode0020",
+    documentId: "Jcode0020",
+    baseDocumentId: "Jcode0020",
     MAVCode: "Jcode0020",
     MHBCode: "",
     IzuyoshiJPCode: "Jcode0020",
@@ -27,6 +33,8 @@ const itemCodeListData = [
   },
   {
     id: "Jcode0021",
+    documentId: "Jcode0021",
+    baseDocumentId: "Jcode0021",
     MAVCode: "Jcode0021",
     MHBCode: "",
     IzuyoshiJPCode: "Jcode0021",
@@ -35,6 +43,8 @@ const itemCodeListData = [
   },
   {
     id: "Jcode0022",
+    documentId: "Jcode0022",
+    baseDocumentId: "Jcode0022",
     MAVCode: "Jcode0022",
     MHBCode: "",
     IzuyoshiJPCode: "Jcode0022",
@@ -43,6 +53,8 @@ const itemCodeListData = [
   },
   {
     id: "Jcode0023",
+    documentId: "Jcode0023",
+    baseDocumentId: "Jcode0023",
     MAVCode: "Jcode0023",
     MHBCode: "",
     IzuyoshiJPCode: "Jcode0023",
@@ -51,6 +63,8 @@ const itemCodeListData = [
   },
   {
     id: "Z000-CS17/BTN-15-026",
+    documentId: "Z000-CS17/BTN-15-026",
+    baseDocumentId: "Z000-CS17/BTN-15-026",
     MAVCode: "Z000-CS17/BTN-15-026",
     MHBCode: "",
     IzuyoshiJPCode: "Z000-CS17/BTN-15-026",
@@ -59,6 +73,8 @@ const itemCodeListData = [
   },
   {
     id: "Z000-CS17/BTN-15-148",
+    documentId: "Z000-CS17/BTN-15-148",
+    baseDocumentId: "Z000-CS17/BTN-15-148",
     MAVCode: "Z000-CS17/BTN-15-148",
     MHBCode: "",
     IzuyoshiJPCode: "Z000-CS17/BTN-15-148",
@@ -67,6 +83,8 @@ const itemCodeListData = [
   },
   {
     id: "ZK00-AP82220/95-BK",
+    documentId: "ZK00-AP82220/95-BK",
+    baseDocumentId: "ZK00-AP82220/95-BK",
     MAVCode: "ZK00-AP82220/95-BK",
     MHBCode: "",
     IzuyoshiJPCode: "ZK00-AP82220/95-BK",
@@ -75,6 +93,8 @@ const itemCodeListData = [
   },
   {
     id: "ZK00-AP82220/95-KW",
+    documentId: "ZK00-AP82220/95-KW",
+    baseDocumentId: "ZK00-AP82220/95-KW",
     MAVCode: "ZK00-AP82220/95-KW",
     MHBCode: "",
     IzuyoshiJPCode: "ZK00-AP82220/95-KW",
