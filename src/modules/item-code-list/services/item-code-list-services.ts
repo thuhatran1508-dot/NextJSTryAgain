@@ -111,6 +111,40 @@ export async function createItemCodeList(item: ItemCodeList): Promise<ItemCodeLi
   return item
 }
 
+export async function bulkCreateItemCodeList(
+  items: ItemCodeList[]
+): Promise<{ success: number; failed: number }> {
+  const db = getFirestoreSafe()
+  if (!db) {
+    return { success: 0, failed: items.length }
+  }
+
+  const batch = writeBatch(db)
+  items.forEach((item) => {
+    batch.set(
+      doc(db, ITEM_CODE_LIST_COLLECTION, item.id),
+      {
+        documentId: item.documentId || item.id,
+        baseDocumentId: item.baseDocumentId || item.id,
+        MAVCode: item.MAVCode,
+        MHBCode: item.MHBCode,
+        IzuyoshiJPCode: item.IzuyoshiJPCode,
+        IzuyoshiVNCode: item.IzuyoshiVNCode,
+        Description: item.Description,
+      },
+      { merge: true }
+    )
+  })
+
+  try {
+    await batch.commit()
+    return { success: items.length, failed: 0 }
+  } catch (error) {
+    console.error("Bulk import failed:", error)
+    return { success: 0, failed: items.length }
+  }
+}
+
 export async function updateItemCodeList(item: ItemCodeList): Promise<ItemCodeList> {
   const db = getFirestoreSafe()
   if (!db) return item

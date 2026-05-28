@@ -70,9 +70,7 @@ function parseFile(file: File): Promise<ParsedItem[]> {
           const Description = (row.Description || row.description || "").trim()
 
           if (!IzuyoshiJPCode) errors.push("IzuyoshiJPCode is required")
-          if (!MAVCode) errors.push("MAVCode is required")
-          if (!IzuyoshiVNCode) errors.push("IzuyoshiVNCode is required")
-          if (!Description) errors.push("Description is required")
+          if (!MAVCode && !MHBCode) errors.push("At least one of MAVCode or MHBCode is required")
 
           return {
             MAVCode,

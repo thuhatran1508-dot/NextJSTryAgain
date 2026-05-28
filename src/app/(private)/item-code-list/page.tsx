@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { DataTable } from "@/modules/item-code-list/components/data-table"
 import { getItemCodeListColumns } from "@/modules/item-code-list/components/columns"
 import {
+  bulkCreateItemCodeList,
   createItemCodeList,
   deleteItemCodeList,
   getItemCodeList,
@@ -77,13 +78,11 @@ export default function ItemCodeListPage() {
 
   const handleImportItems = useCallback(
     async (newItems: ItemCodeList[]) => {
-      const results = await Promise.allSettled(
-        newItems.map((item) => createItemCodeList(item))
-      )
-      const successCount = results.filter((r) => r.status === "fulfilled").length
-      const failCount = results.filter((r) => r.status === "rejected").length
-      if (failCount > 0) {
-        toast.warning(`Imported ${successCount} items, ${failCount} failed`)
+      const result = await bulkCreateItemCodeList(newItems)
+      if (result.failed > 0) {
+        toast.warning(`Imported ${result.success} items, ${result.failed} failed`)
+      } else {
+        toast.success(`Imported ${result.success} items successfully`)
       }
       await refreshItems()
     },
