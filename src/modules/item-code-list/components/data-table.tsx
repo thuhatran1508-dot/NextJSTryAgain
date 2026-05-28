@@ -52,6 +52,11 @@ export function DataTable<TData, TValue>({
     []
   )
   const [sorting, setSorting] = React.useState<SortingState>([])
+  const [pagination, setPagination] = React.useState({ pageIndex: 0, pageSize: 0 })
+
+  React.useEffect(() => {
+    setPagination((prev) => ({ ...prev, pageSize: data.length || 10 }))
+  }, [data.length])
 
   const globalFilterFn: FilterFn<TData> = (row, columnId, filterValue) => {
     const search = String(filterValue).toLowerCase()
@@ -69,8 +74,9 @@ export function DataTable<TData, TValue>({
       columnVisibility,
       rowSelection,
       columnFilters,
-      pagination: { pageIndex: 0, pageSize: data.length },
+      pagination,
     },
+    onPaginationChange: setPagination,
     enableRowSelection: true,
     globalFilterFn,
     onRowSelectionChange: setRowSelection,
