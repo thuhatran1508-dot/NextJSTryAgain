@@ -111,6 +111,41 @@ export async function createItemCodeList(item: ItemCodeList): Promise<ItemCodeLi
   return item
 }
 
+export async function checkDuplicateMAVAndMHB(
+  items: ItemCodeList[]
+): Promise<{ duplicateMAVCodes: Set<string>; duplicateMHBCodes: Set<string> }> {
+  const db = getFirestoreSafe()
+  const duplicateMAVCodes = new Set<string>()
+  const duplicateMHBCodes = new Set<string>()
+
+  if (!db) return { duplicateMAVCodes, duplicateMHBCodes }
+
+  try {
+    const snapshot = await getDocs(collection(db, ITEM_CODE_LIST_COLLECTION))
+    const existingMAVCodes = new Set<string>()
+    const existingMHBCodes = new Set<string>()
+
+    snapshot.docs.forEach((docSnap) => {
+      const data = docSnap.data() as Record<string, string>
+      if (data.MAVCode) existingMAVCodes.add(data.MAVCode.trim().toLowerCase())
+      if (data.MHBCode) existingMHBCodes.add(data.MHBCode.trim().toLowerCase())
+    })
+
+    items.forEach((item) => {
+      if (item.MAVCode && existingMAVCodes.has(item.MAVCode.trim().toLowerCase())) {
+        duplicateMAVCodes.add(item.MAVCode)
+      }
+      if (item.MHBCode && existingMHBCodes.has(item.MHBCode.trim().toLowerCase())) {
+        duplicateMHBCodes.add(item.MHBCode)
+      }
+    })
+  } catch (error) {
+    console.warn("Failed to check duplicates:", error)
+  }
+
+  return { duplicateMAVCodes, duplicateMHBCodes }
+}
+
 export async function bulkCreateItemCodeList(
   items: ItemCodeList[]
 ): Promise<{ success: number; failed: number }> {
