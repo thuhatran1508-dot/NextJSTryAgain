@@ -81,13 +81,6 @@ function SortableHeader<TData>({ header }: SortableHeaderProps<TData>) {
       {header.isPlaceholder
         ? null
         : flexRender(header.column.columnDef.header, header.getContext())}
-      {header.column.getCanResize() && (
-        <div
-          onMouseDown={header.getResizeHandler()}
-          onTouchStart={header.getResizeHandler()}
-          className="absolute right-0 top-0 h-full w-1 cursor-col-resize touch-none hover:bg-primary/50 active:bg-primary/70"
-        />
-      )}
       {header.column.getCanSort() && (
         <span
           {...attributes}
@@ -97,6 +90,19 @@ function SortableHeader<TData>({ header }: SortableHeaderProps<TData>) {
         >
           ⠿
         </span>
+      )}
+      {header.column.getCanResize() && (
+        <div
+          onMouseDown={(e) => {
+            e.stopPropagation()
+            header.getResizeHandler()(e)
+          }}
+          onTouchStart={(e) => {
+            e.stopPropagation()
+            header.getResizeHandler()(e)
+          }}
+          className="absolute right-0 top-0 h-full w-1 cursor-col-resize touch-none hover:bg-primary/50 active:bg-primary/70"
+        />
       )}
     </TableHead>
   )
@@ -128,6 +134,7 @@ export function DataTable<TData, TValue>({
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [pagination, setPagination] = React.useState({ pageIndex: 0, pageSize: 0 })
   const [columnOrder, setColumnOrder] = React.useState<ColumnOrderState>([])
+  const scrollContainerRef = React.useRef<HTMLDivElement>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -186,6 +193,9 @@ export function DataTable<TData, TValue>({
     }
   }
 
+  const headerGroups = table.getHeaderGroups()
+  const rows = table.getRowModel().rows
+
   return (
     <div className="space-y-4">
       <DataTableToolbar
@@ -195,15 +205,19 @@ export function DataTable<TData, TValue>({
         onSeedItems={onSeedItems}
         isSeedingItems={isSeedingItems}
       />
-      <div className="rounded-md border overflow-auto" style={{ maxHeight: "calc(100vh - 18rem)" }}>
+      <div
+        ref={scrollContainerRef}
+        className="rounded-md border overflow-auto"
+        style={{ maxHeight: "calc(100vh - 18rem)" }}
+      >
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}
         >
-          <Table>
+          <Table style={{ tableLayout: "fixed", minWidth: "100%" }}>
             <TableHeader className="sticky top-0 z-10 bg-background shadow-[0_1px_3px_rgba(0,0,0,0.1)]">
-              {table.getHeaderGroups().map((headerGroup) => (
+              {headerGroups.map((headerGroup) => (
                 <TableRow key={headerGroup.id}>
                   <SortableContext
                     items={orderedColumnIds}
@@ -225,14 +239,16 @@ export function DataTable<TData, TValue>({
               ))}
             </TableHeader>
             <TableBody>
-              {table.getRowModel().rows?.length ? (
-                table.getRowModel().rows.map((row) => (
+              {rows?.length ? (
+                rows.map((row) => (
                   <TableRow
                     key={row.id}
                     data-state={row.getIsSelected() && "selected"}
                   >
                     {orderedColumnIds
-                      .map((id) => row.getVisibleCells().find((c) => c.column.id === id))
+                      .map((id) =>
+                        row.getVisibleCells().find((c) => c.column.id === id)
+                      )
                       .filter(Boolean)
                       .map((cell) =>
                         cell ? (
