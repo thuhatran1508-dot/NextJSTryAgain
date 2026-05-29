@@ -206,8 +206,7 @@ export function DataTable<TData, TValue>({
         isSeedingItems={isSeedingItems}
       />
       <div
-        ref={scrollContainerRef}
-        className="rounded-md border overflow-auto"
+        className="rounded-md border overflow-hidden"
         style={{ maxHeight: "calc(100vh - 18rem)" }}
       >
         <DndContext
@@ -215,29 +214,53 @@ export function DataTable<TData, TValue>({
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}
         >
+          {/* Header — scrolls only horizontally, always visible */}
+          <div
+            className="overflow-x-auto overflow-y-hidden"
+            style={{ scrollbarWidth: "thin" }}
+          >
+            <Table style={{ tableLayout: "fixed", minWidth: "100%" }}>
+              <TableHeader className="sticky top-0 z-10 bg-background shadow-[0_1px_3px_rgba(0,0,0,0.1)]">
+                {headerGroups.map((headerGroup) => (
+                  <TableRow key={headerGroup.id}>
+                    <SortableContext
+                      items={orderedColumnIds}
+                      strategy={horizontalListSortingStrategy}
+                    >
+                      {orderedColumnIds
+                        .map((id) =>
+                          headerGroup.headers.find((h) => h.id === id)
+                        )
+                        .filter(Boolean)
+                        .map((header) =>
+                          header ? (
+                            <SortableHeader
+                              key={header.id}
+                              header={header}
+                            />
+                          ) : null
+                        )}
+                    </SortableContext>
+                  </TableRow>
+                ))}
+              </TableHeader>
+            </Table>
+          </div>
+        </DndContext>
+
+        {/* Body — scrolls both vertically + horizontally, synced with header */}
+        <div
+          ref={scrollContainerRef}
+          className="overflow-auto"
+          onScroll={(e) => {
+            const headerScroll = scrollContainerRef.current?.previousElementSibling as HTMLElement | null
+            if (headerScroll) {
+              headerScroll.scrollLeft = e.currentTarget.scrollLeft
+            }
+          }}
+          style={{ maxHeight: "calc(100vh - 18rem - 41px)", scrollbarWidth: "thin" }}
+        >
           <Table style={{ tableLayout: "fixed", minWidth: "100%" }}>
-            <TableHeader className="sticky top-0 z-10 bg-background shadow-[0_1px_3px_rgba(0,0,0,0.1)]">
-              {headerGroups.map((headerGroup) => (
-                <TableRow key={headerGroup.id}>
-                  <SortableContext
-                    items={orderedColumnIds}
-                    strategy={horizontalListSortingStrategy}
-                  >
-                    {orderedColumnIds
-                      .map((id) => headerGroup.headers.find((h) => h.id === id))
-                      .filter(Boolean)
-                      .map((header) =>
-                        header ? (
-                          <SortableHeader
-                            key={header.id}
-                            header={header}
-                          />
-                        ) : null
-                      )}
-                  </SortableContext>
-                </TableRow>
-              ))}
-            </TableHeader>
             <TableBody>
               {rows?.length ? (
                 rows.map((row) => (
@@ -277,7 +300,7 @@ export function DataTable<TData, TValue>({
               )}
             </TableBody>
           </Table>
-        </DndContext>
+        </div>
       </div>
       <DataTablePagination table={table} />
     </div>
