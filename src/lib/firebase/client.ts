@@ -14,14 +14,24 @@ const firebaseConfig = {
 };
 
 function hasFirebaseConfig(): boolean {
-  return !!(
-    firebaseConfig.apiKey &&
-    firebaseConfig.authDomain &&
-    firebaseConfig.projectId &&
-    firebaseConfig.storageBucket &&
-    firebaseConfig.messagingSenderId &&
-    firebaseConfig.appId
-  );
+  const has =
+    !!(
+      firebaseConfig.apiKey &&
+      firebaseConfig.authDomain &&
+      firebaseConfig.projectId &&
+      firebaseConfig.storageBucket &&
+      firebaseConfig.messagingSenderId &&
+      firebaseConfig.appId
+    )
+  console.log("[Firebase] hasFirebaseConfig():", has, {
+    apiKey: firebaseConfig.apiKey ? "(set)" : "(MISSING)",
+    authDomain: firebaseConfig.authDomain ? "(set)" : "(MISSING)",
+    projectId: firebaseConfig.projectId ? "(set)" : "(MISSING)",
+    storageBucket: firebaseConfig.storageBucket ? "(set)" : "(MISSING)",
+    messagingSenderId: firebaseConfig.messagingSenderId ? "(set)" : "(MISSING)",
+    appId: firebaseConfig.appId ? "(set)" : "(MISSING)",
+  })
+  return has
 }
 
 function getFirebaseApp(): FirebaseApp {

@@ -149,7 +149,9 @@ export async function checkDuplicateMAVAndMHB(
 export async function bulkCreateItemCodeList(
   items: ItemCodeList[]
 ): Promise<{ success: number; failed: number }> {
+  console.log("[ItemCodeList] bulkCreateItemCodeList called with", items.length, "items")
   const db = getFirestoreSafe()
+  console.log("[ItemCodeList] getFirestoreSafe() returned:", db)
   if (!db) {
     throw new Error(
       "Firebase is not configured. Please set NEXT_PUBLIC_FIREBASE_* environment variables."
@@ -174,11 +176,14 @@ export async function bulkCreateItemCodeList(
   })
 
   try {
+    console.log("[ItemCodeList] Committing batch of", items.length, "items to collection:", ITEM_CODE_LIST_COLLECTION)
     await batch.commit()
+    console.log("[ItemCodeList] Batch commit SUCCESS")
     return { success: items.length, failed: 0 }
   } catch (error) {
-    console.error("Bulk import failed:", error)
-    return { success: 0, failed: items.length }
+    console.error("[ItemCodeList] Batch commit FAILED:", error)
+    const message = error instanceof Error ? error.message : String(error)
+    throw new Error(`Firebase write failed: ${message}`)
   }
 }
 

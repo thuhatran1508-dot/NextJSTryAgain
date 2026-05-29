@@ -78,7 +78,9 @@ export default function ItemCodeListPage() {
 
   const handleImportItems = useCallback(
     async (newItems: ItemCodeList[]) => {
+      console.log("[ItemCodeList] handleImportItems called with", newItems.length, "items")
       const result = await bulkCreateItemCodeList(newItems)
+      console.log("[ItemCodeList] handleImportItems result:", result)
       if (result.failed > 0) {
         toast.warning(`Imported ${result.success} items, ${result.failed} failed`)
       } else {
