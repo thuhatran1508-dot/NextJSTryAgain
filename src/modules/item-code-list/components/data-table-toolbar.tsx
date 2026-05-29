@@ -33,12 +33,22 @@ function downloadTemplate() {
 }
 
 const exportColumns = [
-  { key: "MAVCode", header: "MAV Code" },
-  { key: "MHBCode", header: "MHB Code" },
-  { key: "IzuyoshiJPCode", header: "Izuyoshi JP Code" },
-  { key: "IzuyoshiVNCode", header: "Izuyoshi VN Code" },
-  { key: "Description", header: "Description" },
+  { key: "MAVCode", header: "MAV Code", width: 18 },
+  { key: "MHBCode", header: "MHB Code", width: 18 },
+  { key: "IzuyoshiJPCode", header: "Izuyoshi JP Code", width: 24 },
+  { key: "IzuyoshiVNCode", header: "Izuyoshi VN Code", width: 24 },
+  { key: "Description", header: "Description", width: 80 },
 ] as const
+
+function getExportFileName() {
+  const timestamp = new Date()
+    .toISOString()
+    .replace("T", "_")
+    .replace(/[:.]/g, "-")
+    .slice(0, 19)
+
+  return `ItemCodeList_${timestamp}.xlsx`
+}
 
 function downloadTableData<TData>(table: Table<TData>) {
   const rows = table.getFilteredRowModel().rows
@@ -49,22 +59,42 @@ function downloadTableData<TData>(table: Table<TData>) {
   }
 
   import("xlsx").then((XLSX) => {
+    const headerRow = exportColumns.map((column) => column.header)
     const exportRows = rows.map((row) => {
       const item = row.original as Partial<ItemCodeList>
 
-      return exportColumns.reduce<Record<string, string>>((acc, column) => {
-        acc[column.header] = String(item[column.key] ?? "")
-        return acc
-      }, {})
+      return exportColumns.map((column) => String(item[column.key] ?? ""))
+    })
+    const worksheetRows = [
+      ["ItemCodeList Export"],
+      [`Total rows: ${rows.length}`, `Exported at: ${new Date().toLocaleString()}`],
+      [],
+      headerRow,
+      ...exportRows,
+    ]
+
+    const ws = XLSX.utils.aoa_to_sheet(worksheetRows)
+    const wb = XLSX.utils.book_new()
+    const lastRow = worksheetRows.length
+    const lastColumn = exportColumns.length - 1
+    const headerRange = XLSX.utils.encode_range({
+      s: { r: 3, c: 0 },
+      e: { r: lastRow - 1, c: lastColumn },
     })
 
-    const ws = XLSX.utils.json_to_sheet(exportRows, {
-      header: exportColumns.map((column) => column.header),
-    })
-    const wb = XLSX.utils.book_new()
+    ws["!cols"] = exportColumns.map((column) => ({ wch: column.width }))
+    ws["!rows"] = [
+      { hpt: 24 },
+      { hpt: 18 },
+      { hpt: 8 },
+      { hpt: 22 },
+      ...exportRows.map(() => ({ hpt: 36 })),
+    ]
+    ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: lastColumn } }]
+    ws["!autofilter"] = { ref: headerRange }
 
     XLSX.utils.book_append_sheet(wb, ws, "ItemCodeList")
-    XLSX.writeFile(wb, "ItemCodeList.xlsx")
+    XLSX.writeFile(wb, getExportFileName())
     toast.success(`Exported ${rows.length} ItemCodeList rows`)
   })
 }
