@@ -80,6 +80,8 @@ export function DataTable<TData, TValue>({
     },
     onPaginationChange: setPagination,
     enableRowSelection: true,
+    enableColumnResizing: true,
+    columnResizeMode: "onChange",
     globalFilterFn,
     onRowSelectionChange: setRowSelection,
     onSortingChange: setSorting,
@@ -109,13 +111,25 @@ export function DataTable<TData, TValue>({
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {
                   return (
-                    <TableHead key={header.id} colSpan={header.colSpan}>
+                    <TableHead
+                      key={header.id}
+                      colSpan={header.colSpan}
+                      style={{ position: "relative", width: header.getSize() }}
+                      className="select-none"
+                    >
                       {header.isPlaceholder
                         ? null
                         : flexRender(
                             header.column.columnDef.header,
                             header.getContext()
                           )}
+                      {header.column.getCanResize() && (
+                        <div
+                          onMouseDown={header.getResizeHandler()}
+                          onTouchStart={header.getResizeHandler()}
+                          className="absolute right-0 top-0 h-full w-1 cursor-col-resize touch-none hover:bg-primary/50 active:bg-primary/70"
+                        />
+                      )}
                     </TableHead>
                   )
                 })}
@@ -130,7 +144,10 @@ export function DataTable<TData, TValue>({
                   data-state={row.getIsSelected() && "selected"}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell
+                      key={cell.id}
+                      style={{ width: cell.column.getSize() }}
+                    >
                       {flexRender(
                         cell.column.columnDef.cell,
                         cell.getContext()

@@ -47,10 +47,11 @@ export function getItemCodeListColumns({
         <DataTableColumnHeader column={column} title="MAV Code" />
       ),
       cell: ({ row }) => (
-        <div className="w-[130px] font-medium">
-          {row.getValue("MAVCode")}
+        <div className="break-all">
+          {row.getValue("MAVCode") || <span className="text-muted-foreground">—</span>}
         </div>
       ),
+      size: 130,
     },
     {
       accessorKey: "MHBCode",
@@ -58,10 +59,11 @@ export function getItemCodeListColumns({
         <DataTableColumnHeader column={column} title="MHB Code" />
       ),
       cell: ({ row }) => (
-        <div className="w-[130px]">
-          {row.getValue("MHBCode")}
+        <div className="break-all">
+          {row.getValue("MHBCode") || <span className="text-muted-foreground">—</span>}
         </div>
       ),
+      size: 130,
     },
     {
       accessorKey: "IzuyoshiJPCode",
@@ -69,10 +71,11 @@ export function getItemCodeListColumns({
         <DataTableColumnHeader column={column} title="Izuyoshi JP Code" />
       ),
       cell: ({ row }) => (
-        <div className="w-[150px]">
+        <div className="break-all">
           {row.getValue("IzuyoshiJPCode")}
         </div>
       ),
+      size: 150,
     },
     {
       accessorKey: "IzuyoshiVNCode",
@@ -80,10 +83,11 @@ export function getItemCodeListColumns({
         <DataTableColumnHeader column={column} title="Izuyoshi VN Code" />
       ),
       cell: ({ row }) => (
-        <div className="w-[150px]">
-          {row.getValue("IzuyoshiVNCode")}
+        <div className="break-all">
+          {row.getValue("IzuyoshiVNCode") || <span className="text-muted-foreground">—</span>}
         </div>
       ),
+      size: 150,
     },
     {
       accessorKey: "Description",
@@ -91,10 +95,11 @@ export function getItemCodeListColumns({
         <DataTableColumnHeader column={column} title="Description" />
       ),
       cell: ({ row }) => (
-        <div className="max-w-[400px] truncate">
-          {row.getValue("Description")}
+        <div className="break-words whitespace-pre-wrap">
+          {row.getValue("Description") || <span className="text-muted-foreground">—</span>}
         </div>
       ),
+      size: 400,
       filterFn: (row, id, value) => {
         return value.includes(row.getValue(id))
       },
