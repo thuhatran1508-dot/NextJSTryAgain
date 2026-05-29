@@ -2,6 +2,7 @@
 
 import type { Table } from "@tanstack/react-table"
 import { Database, Download, RefreshCcw, Search } from "lucide-react"
+import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -31,6 +32,43 @@ function downloadTemplate() {
   })
 }
 
+const exportColumns = [
+  { key: "MAVCode", header: "MAV Code" },
+  { key: "MHBCode", header: "MHB Code" },
+  { key: "IzuyoshiJPCode", header: "Izuyoshi JP Code" },
+  { key: "IzuyoshiVNCode", header: "Izuyoshi VN Code" },
+  { key: "Description", header: "Description" },
+] as const
+
+function downloadTableData<TData>(table: Table<TData>) {
+  const rows = table.getFilteredRowModel().rows
+
+  if (!rows.length) {
+    toast.warning("No ItemCodeList data to export")
+    return
+  }
+
+  import("xlsx").then((XLSX) => {
+    const exportRows = rows.map((row) => {
+      const item = row.original as Partial<ItemCodeList>
+
+      return exportColumns.reduce<Record<string, string>>((acc, column) => {
+        acc[column.header] = String(item[column.key] ?? "")
+        return acc
+      }, {})
+    })
+
+    const ws = XLSX.utils.json_to_sheet(exportRows, {
+      header: exportColumns.map((column) => column.header),
+    })
+    const wb = XLSX.utils.book_new()
+
+    XLSX.utils.book_append_sheet(wb, ws, "ItemCodeList")
+    XLSX.writeFile(wb, "ItemCodeList.xlsx")
+    toast.success(`Exported ${rows.length} ItemCodeList rows`)
+  })
+}
+
 interface DataTableToolbarProps<TData> {
   table: Table<TData>
   onAddItem?: (item: ItemCodeList) => void | Promise<void>
@@ -49,6 +87,7 @@ export function DataTableToolbar<TData>({
   const isFiltered =
     table.getState().columnFilters.length > 0 ||
     (table.getState().globalFilter?.length ?? 0) > 0
+  const exportableRowCount = table.getFilteredRowModel().rows.length
 
   return (
     <div className="space-y-4">
@@ -100,6 +139,16 @@ export function DataTableToolbar<TData>({
           >
             <Download className="h-4 w-4" />
             <span className="hidden lg:block">Template</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="cursor-pointer"
+            onClick={() => downloadTableData(table)}
+            disabled={exportableRowCount === 0}
+          >
+            <Download className="h-4 w-4" />
+            <span className="hidden lg:block">Export</span>
           </Button>
           <ImportItemCodeListDialog onImportItems={onImportItems} />
           <AddItemCodeListSheet onAddItem={onAddItem} />
