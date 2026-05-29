@@ -24,8 +24,8 @@ const itemCodeListFormSchema = z.object({
   MAVCode: z.string(),
   MHBCode: z.string(),
   IzuyoshiJPCode: z.string().min(1, "Izuyoshi JP Code is required"),
-  IzuyoshiVNCode: z.string().min(1, "Izuyoshi VN Code is required"),
-  Description: z.string().min(1, "Description is required"),
+  IzuyoshiVNCode: z.string(),
+  Description: z.string(),
 }).refine(
   (data) => Boolean(data.MAVCode?.trim()) || Boolean(data.MHBCode?.trim()),
   { message: "At least one of MAVCode or MHBCode is required", path: ["MAVCode"] }
@@ -203,7 +203,7 @@ export function AddItemCodeListSheet({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="add-izuvn">Izuyoshi VN Code *</Label>
+            <Label htmlFor="add-izuvn">Izuyoshi VN Code</Label>
             <Input
               id="add-izuvn"
               placeholder="VNcode0018"
@@ -214,15 +214,11 @@ export function AddItemCodeListSheet({
                   IzuyoshiVNCode: e.target.value,
                 }))
               }
-              className={errors.IzuyoshiVNCode ? "border-red-500" : ""}
             />
-            {errors.IzuyoshiVNCode && (
-              <p className="text-sm text-red-500">{errors.IzuyoshiVNCode}</p>
-            )}
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="add-description">Description *</Label>
+            <Label htmlFor="add-description">Description</Label>
             <Input
               id="add-description"
               placeholder="Item description..."
@@ -233,11 +229,7 @@ export function AddItemCodeListSheet({
                   Description: e.target.value,
                 }))
               }
-              className={errors.Description ? "border-red-500" : ""}
             />
-            {errors.Description && (
-              <p className="text-sm text-red-500">{errors.Description}</p>
-            )}
           </div>
 
           <SheetFooter className="pt-4">
