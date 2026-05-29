@@ -48,11 +48,11 @@ import { DataTablePagination } from "./data-table-pagination"
 import { DataTableToolbar } from "./data-table-toolbar"
 import type { ItemCodeList } from "@/modules/item-code-list/services/types/item-code-list-types"
 
-interface SortableHeaderProps {
+interface SortableHeaderProps<TData> {
   header: Header<TData, unknown>
 }
 
-function SortableHeader({ header }: SortableHeaderProps) {
+function SortableHeader<TData>({ header }: SortableHeaderProps<TData>) {
   const {
     attributes,
     listeners,
@@ -155,19 +155,16 @@ export function DataTable<TData, TValue>({
       rowSelection,
       columnFilters,
       pagination,
-      columnOrder,
     },
     onPaginationChange: setPagination,
     enableRowSelection: true,
     enableColumnResizing: true,
-    enableColumnOrdering: true,
     columnResizeMode: "onChange",
     globalFilterFn,
     onRowSelectionChange: setRowSelection,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
-    onColumnOrderChange: setColumnOrder,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -176,19 +173,18 @@ export function DataTable<TData, TValue>({
     getFacetedUniqueValues: getFacetedUniqueValues(),
   })
 
+  const orderedColumnIds = columnOrder.length
+    ? columnOrder
+    : table.getAllColumns().map((c) => c.id)
+
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
     if (over && active.id !== over.id) {
-      const columnOrder = table.getState().columnOrder
-      const oldIndex = columnOrder.indexOf(String(active.id))
-      const newIndex = columnOrder.indexOf(String(over.id))
-      setColumnOrder(arrayMove(columnOrder, oldIndex, newIndex))
+      const oldIndex = orderedColumnIds.indexOf(String(active.id))
+      const newIndex = orderedColumnIds.indexOf(String(over.id))
+      setColumnOrder(arrayMove(orderedColumnIds, oldIndex, newIndex))
     }
   }
-
-  const headerIds = table.getState().columnOrder.length
-    ? table.getState().columnOrder
-    : table.getAllColumns().map((c) => c.id)
 
   return (
     <div className="space-y-4">
@@ -210,12 +206,20 @@ export function DataTable<TData, TValue>({
               {table.getHeaderGroups().map((headerGroup) => (
                 <TableRow key={headerGroup.id}>
                   <SortableContext
-                    items={headerIds}
+                    items={orderedColumnIds}
                     strategy={horizontalListSortingStrategy}
                   >
-                    {headerGroup.headers.map((header) => (
-                      <SortableHeader key={header.id} header={header} />
-                    ))}
+                    {orderedColumnIds
+                      .map((id) => headerGroup.headers.find((h) => h.id === id))
+                      .filter(Boolean)
+                      .map((header) =>
+                        header ? (
+                          <SortableHeader
+                            key={header.id}
+                            header={header}
+                          />
+                        ) : null
+                      )}
                   </SortableContext>
                 </TableRow>
               ))}
@@ -227,23 +231,28 @@ export function DataTable<TData, TValue>({
                     key={row.id}
                     data-state={row.getIsSelected() && "selected"}
                   >
-                    {row.getVisibleCells().map((cell) => (
-                      <TableCell
-                        key={cell.id}
-                        style={{ width: cell.column.getSize() }}
-                      >
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext()
-                        )}
-                      </TableCell>
-                    ))}
+                    {orderedColumnIds
+                      .map((id) => row.getVisibleCells().find((c) => c.column.id === id))
+                      .filter(Boolean)
+                      .map((cell) =>
+                        cell ? (
+                          <TableCell
+                            key={cell.id}
+                            style={{ width: cell.column.getSize() }}
+                          >
+                            {flexRender(
+                              cell.column.columnDef.cell,
+                              cell.getContext()
+                            )}
+                          </TableCell>
+                        ) : null
+                      )}
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
                   <TableCell
-                    colSpan={columns.length}
+                    colSpan={orderedColumnIds.length}
                     className="h-24 text-center"
                   >
                     No results.
