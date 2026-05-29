@@ -85,7 +85,7 @@ function SortableHeader<TData>({ header }: SortableHeaderProps<TData>) {
         <span
           {...attributes}
           {...listeners}
-          className="ml-1 inline-block cursor-grab select-none text-muted-foreground hover:text-foreground active:cursor-grabbing"
+          className="ml-1 inline-block cursor-grab select-none text-muted-foreground hover:text-foreground active:cursor-grabbing shrink-0"
           title="Drag to reorder"
         >
           ⠿
@@ -101,8 +101,10 @@ function SortableHeader<TData>({ header }: SortableHeaderProps<TData>) {
             e.stopPropagation()
             header.getResizeHandler()(e)
           }}
-          className="absolute right-0 top-0 h-full w-1 cursor-col-resize touch-none hover:bg-primary/50 active:bg-primary/70"
-        />
+          className="absolute right-0 top-0 h-full w-2 cursor-col-resize touch-none group/resize hover:bg-primary/40 active:bg-primary/60"
+        >
+          <div className="absolute right-0 top-1/2 -translate-y-1/2 h-6 w-0.5 bg-border group-hover/resize:bg-primary group-active/resize:bg-primary transition-colors rounded-full" />
+        </div>
       )}
     </TableHead>
   )
@@ -134,7 +136,6 @@ export function DataTable<TData, TValue>({
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [pagination, setPagination] = React.useState({ pageIndex: 0, pageSize: 0 })
   const [columnOrder, setColumnOrder] = React.useState<ColumnOrderState>([])
-  const scrollContainerRef = React.useRef<HTMLDivElement>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -205,62 +206,40 @@ export function DataTable<TData, TValue>({
         onSeedItems={onSeedItems}
         isSeedingItems={isSeedingItems}
       />
-      <div
-        className="rounded-md border overflow-hidden"
-        style={{ maxHeight: "calc(100vh - 18rem)" }}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
       >
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          {/* Header — scrolls only horizontally, always visible */}
-          <div
-            className="overflow-x-auto overflow-y-hidden"
-            style={{ scrollbarWidth: "thin" }}
-          >
-            <Table style={{ tableLayout: "fixed", minWidth: "100%" }}>
-              <TableHeader className="sticky top-0 z-10 bg-background shadow-[0_1px_3px_rgba(0,0,0,0.1)]">
-                {headerGroups.map((headerGroup) => (
-                  <TableRow key={headerGroup.id}>
-                    <SortableContext
-                      items={orderedColumnIds}
-                      strategy={horizontalListSortingStrategy}
-                    >
-                      {orderedColumnIds
-                        .map((id) =>
-                          headerGroup.headers.find((h) => h.id === id)
-                        )
-                        .filter(Boolean)
-                        .map((header) =>
-                          header ? (
-                            <SortableHeader
-                              key={header.id}
-                              header={header}
-                            />
-                          ) : null
-                        )}
-                    </SortableContext>
-                  </TableRow>
-                ))}
-              </TableHeader>
-            </Table>
-          </div>
-        </DndContext>
-
-        {/* Body — scrolls both vertically + horizontally, synced with header */}
         <div
-          ref={scrollContainerRef}
-          className="overflow-auto"
-          onScroll={(e) => {
-            const headerScroll = scrollContainerRef.current?.previousElementSibling as HTMLElement | null
-            if (headerScroll) {
-              headerScroll.scrollLeft = e.currentTarget.scrollLeft
-            }
-          }}
-          style={{ maxHeight: "calc(100vh - 18rem - 41px)", scrollbarWidth: "thin" }}
+          className="rounded-md border overflow-auto"
+          style={{ maxHeight: "calc(100vh - 18rem)" }}
         >
           <Table style={{ tableLayout: "fixed", minWidth: "100%" }}>
+            <TableHeader className="sticky top-0 z-10 bg-background shadow-[0_1px_3px_rgba(0,0,0,0.1)]">
+              {headerGroups.map((headerGroup) => (
+                <TableRow key={headerGroup.id}>
+                  <SortableContext
+                    items={orderedColumnIds}
+                    strategy={horizontalListSortingStrategy}
+                  >
+                    {orderedColumnIds
+                      .map((id) =>
+                        headerGroup.headers.find((h) => h.id === id)
+                      )
+                      .filter(Boolean)
+                      .map((header) =>
+                        header ? (
+                          <SortableHeader
+                            key={header.id}
+                            header={header}
+                          />
+                        ) : null
+                      )}
+                  </SortableContext>
+                </TableRow>
+              ))}
+            </TableHeader>
             <TableBody>
               {rows?.length ? (
                 rows.map((row) => (
@@ -278,6 +257,11 @@ export function DataTable<TData, TValue>({
                           <TableCell
                             key={cell.id}
                             style={{ width: cell.column.getSize() }}
+                            className={
+                              cell.column.id === "Description"
+                                ? "overflow-hidden"
+                                : "overflow-hidden text-ellipsis whitespace-nowrap"
+                            }
                           >
                             {flexRender(
                               cell.column.columnDef.cell,
@@ -301,7 +285,7 @@ export function DataTable<TData, TValue>({
             </TableBody>
           </Table>
         </div>
-      </div>
+      </DndContext>
       <DataTablePagination table={table} />
     </div>
   )
