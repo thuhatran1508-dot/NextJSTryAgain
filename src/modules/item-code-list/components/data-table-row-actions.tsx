@@ -34,6 +34,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
+import { checkDuplicateMHBForUpdate } from "@/modules/item-code-list/services/item-code-list-services"
 import {
   itemCodeListSchema,
   type ItemCodeList,
@@ -80,6 +81,17 @@ export function DataTableRowActions<TData>({
     try {
       setIsSaving(true)
       setErrors({})
+
+      // Check for duplicate MHBCode (excluding current item)
+      if (draft.MHBCode?.trim()) {
+        const isDuplicate = await checkDuplicateMHBForUpdate(draft.MHBCode, draft.id)
+        if (isDuplicate) {
+          setErrors({ MHBCode: "MHBCode already exists in another item" })
+          setIsSaving(false)
+          return
+        }
+      }
+
       await onUpdateItem?.(draft)
       setEditOpen(false)
       toast.success("ItemCodeList updated successfully")
@@ -196,8 +208,8 @@ export function DataTableRowActions<TData>({
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label className="text-muted-foreground text-xs uppercase">MAV Code (Document ID)</Label>
-                  <p className="mt-1 font-medium text-sm">{draft.MAVCode}</p>
+                  <Label className="text-muted-foreground text-xs uppercase">MAV Code</Label>
+                  <p className="mt-1 font-medium text-sm">{draft.MAVCode || "-"}</p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor={`edit-mhbcode-${item.id}`}>MHB Code</Label>
@@ -209,13 +221,17 @@ export function DataTableRowActions<TData>({
                         current ? { ...current, MHBCode: e.target.value } : current
                       )
                     }
+                    className={errors.MHBCode ? "border-red-500" : ""}
                   />
+                  {errors.MHBCode && (
+                    <p className="text-sm text-red-500">{errors.MHBCode}</p>
+                  )}
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label className="text-muted-foreground text-xs uppercase">Izuyoshi JP Code (Document ID)</Label>
+                  <Label className="text-muted-foreground text-xs uppercase">Izuyoshi JP Code</Label>
                   <p className="mt-1 font-medium text-sm">{draft.IzuyoshiJPCode}</p>
                 </div>
                 <div className="space-y-2">

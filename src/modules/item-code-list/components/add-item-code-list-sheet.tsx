@@ -18,14 +18,18 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import type { ItemCodeList } from "@/modules/item-code-list/services/types/item-code-list-types"
+import { checkDuplicateMAVCode } from "@/modules/item-code-list/services/item-code-list-services"
 
 const itemCodeListFormSchema = z.object({
-  MAVCode: z.string().min(1, "MAV Code is required"),
+  MAVCode: z.string(),
   MHBCode: z.string(),
   IzuyoshiJPCode: z.string().min(1, "Izuyoshi JP Code is required"),
   IzuyoshiVNCode: z.string().min(1, "Izuyoshi VN Code is required"),
   Description: z.string().min(1, "Description is required"),
-})
+}).refine(
+  (data) => Boolean(data.MAVCode?.trim()) || Boolean(data.MHBCode?.trim()),
+  { message: "At least one of MAVCode or MHBCode is required", path: ["MAVCode"] }
+)
 
 type ItemCodeListFormData = z.infer<typeof itemCodeListFormSchema>
 
@@ -56,12 +60,22 @@ export function AddItemCodeListSheet({
     try {
       const validatedData = itemCodeListFormSchema.parse(formData)
       const docId = validatedData.IzuyoshiJPCode
+
+      if (validatedData.MAVCode?.trim()) {
+        const isDup = await checkDuplicateMAVCode(validatedData.MAVCode)
+        if (isDup) {
+          setErrors({ MAVCode: "MAVCode already exists in database" })
+          setIsSubmitting(false)
+          return
+        }
+      }
+
       const newItem: ItemCodeList = {
         id: docId,
         documentId: docId,
         baseDocumentId: docId,
-        MAVCode: validatedData.MAVCode,
-        MHBCode: validatedData.MHBCode,
+        MAVCode: validatedData.MAVCode ?? "",
+        MHBCode: validatedData.MHBCode ?? "",
         IzuyoshiJPCode: docId,
         IzuyoshiVNCode: validatedData.IzuyoshiVNCode,
         Description: validatedData.Description,
@@ -137,7 +151,7 @@ export function AddItemCodeListSheet({
           ) : null}
 
           <div className="space-y-2">
-            <Label htmlFor="add-mavcode">MAV Code *</Label>
+            <Label htmlFor="add-mavcode">MAV Code</Label>
             <Input
               id="add-mavcode"
               placeholder="MAVcode001"

@@ -71,8 +71,15 @@ function parseFile(file: File): Promise<ParsedItem[]> {
           ).trim()
           const Description = (row.Description || row.description || "").trim()
 
-          if (!IzuyoshiJPCode) errors.push("IzuyoshiJPCode is required")
-          if (!MAVCode && !MHBCode) errors.push("At least one of MAVCode or MHBCode is required")
+          if (!IzuyoshiJPCode) {
+            errors.push("IzuyoshiJPCode is required")
+          } else {
+            const hasMAV = Boolean(MAVCode)
+            const hasMHB = Boolean(MHBCode)
+            if (!hasMAV && !hasMHB) {
+              errors.push("Must have at least one pair: (MAVCode + IzuyoshiJPCode) or (MHBCode + IzuyoshiJPCode)")
+            }
+          }
 
           return {
             MAVCode,

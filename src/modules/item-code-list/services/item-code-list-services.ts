@@ -34,7 +34,7 @@ function normalizeItem(docId: string, data: Record<string, unknown>): ItemCodeLi
     id,
     documentId: (data.documentId as string) || id,
     baseDocumentId: (data.baseDocumentId as string) || id,
-    MAVCode: (data.MAVCode as string) || id,
+    MAVCode: (data.MAVCode as string) || "",
     MHBCode: (data.MHBCode as string) || "",
     IzuyoshiJPCode: (data.IzuyoshiJPCode as string) || id,
     IzuyoshiVNCode: (data.IzuyoshiVNCode as string) || "",
@@ -102,11 +102,11 @@ export async function createItemCodeList(item: ItemCodeList): Promise<ItemCodeLi
   await setDoc(doc(db, ITEM_CODE_LIST_COLLECTION, item.id), {
     documentId: item.documentId || item.id,
     baseDocumentId: item.baseDocumentId || item.id,
-    MAVCode: item.MAVCode,
-    MHBCode: item.MHBCode,
+    MAVCode: item.MAVCode ?? "",
+    MHBCode: item.MHBCode ?? "",
     IzuyoshiJPCode: item.IzuyoshiJPCode,
-    IzuyoshiVNCode: item.IzuyoshiVNCode,
-    Description: item.Description,
+    IzuyoshiVNCode: item.IzuyoshiVNCode ?? "",
+    Description: item.Description ?? "",
   })
   return item
 }
@@ -131,19 +131,80 @@ export async function checkDuplicateMAVAndMHB(
       if (data.MHBCode) existingMHBCodes.add(data.MHBCode.trim().toLowerCase())
     })
 
+    // Check duplicates within the import batch itself
+    const batchMAVCodes = new Set<string>()
+    const batchMHBCodes = new Set<string>()
+
     items.forEach((item) => {
-      if (item.MAVCode && existingMAVCodes.has(item.MAVCode.trim().toLowerCase())) {
+      const mavLower = item.MAVCode?.trim().toLowerCase()
+      const mhbLower = item.MHBCode?.trim().toLowerCase()
+
+      // Existing in DB
+      if (item.MAVCode && existingMAVCodes.has(mavLower!)) {
         duplicateMAVCodes.add(item.MAVCode)
       }
-      if (item.MHBCode && existingMHBCodes.has(item.MHBCode.trim().toLowerCase())) {
+      if (item.MHBCode && existingMHBCodes.has(mhbLower!)) {
         duplicateMHBCodes.add(item.MHBCode)
       }
+
+      // Duplicate within batch
+      if (item.MAVCode && batchMAVCodes.has(mavLower!)) {
+        duplicateMAVCodes.add(item.MAVCode)
+      }
+      if (item.MHBCode && batchMHBCodes.has(mhbLower!)) {
+        duplicateMHBCodes.add(item.MHBCode)
+      }
+
+      if (item.MAVCode) batchMAVCodes.add(mavLower!)
+      if (item.MHBCode) batchMHBCodes.add(mhbLower!)
     })
   } catch (error) {
     console.warn("Failed to check duplicates:", error)
   }
 
   return { duplicateMAVCodes, duplicateMHBCodes }
+}
+
+export async function checkDuplicateMHBForUpdate(
+  mhbCode: string,
+  excludeItemId: string
+): Promise<boolean> {
+  const db = getFirestoreSafe()
+  if (!db || !mhbCode?.trim()) return false
+
+  try {
+    const snapshot = await getDocs(collection(db, ITEM_CODE_LIST_COLLECTION))
+    const mhbLower = mhbCode.trim().toLowerCase()
+
+    for (const docSnap of snapshot.docs) {
+      if (docSnap.id === excludeItemId) continue
+      const data = docSnap.data() as Record<string, string>
+      if (data.MHBCode?.trim().toLowerCase() === mhbLower) return true
+    }
+  } catch (error) {
+    console.warn("Failed to check MHB duplicate on update:", error)
+  }
+
+  return false
+}
+
+export async function checkDuplicateMAVCode(maVCode: string): Promise<boolean> {
+  const db = getFirestoreSafe()
+  if (!db || !maVCode?.trim()) return false
+
+  try {
+    const snapshot = await getDocs(collection(db, ITEM_CODE_LIST_COLLECTION))
+    const mavLower = maVCode.trim().toLowerCase()
+
+    for (const docSnap of snapshot.docs) {
+      const data = docSnap.data() as Record<string, string>
+      if (data.MAVCode?.trim().toLowerCase() === mavLower) return true
+    }
+  } catch (error) {
+    console.warn("Failed to check MAV duplicate:", error)
+  }
+
+  return false
 }
 
 export async function bulkCreateItemCodeList(
@@ -165,11 +226,11 @@ export async function bulkCreateItemCodeList(
       {
         documentId: item.documentId || item.id,
         baseDocumentId: item.baseDocumentId || item.id,
-        MAVCode: item.MAVCode,
-        MHBCode: item.MHBCode,
+        MAVCode: item.MAVCode ?? "",
+        MHBCode: item.MHBCode ?? "",
         IzuyoshiJPCode: item.IzuyoshiJPCode,
-        IzuyoshiVNCode: item.IzuyoshiVNCode,
-        Description: item.Description,
+        IzuyoshiVNCode: item.IzuyoshiVNCode ?? "",
+        Description: item.Description ?? "",
       },
       { merge: true }
     )
@@ -192,12 +253,11 @@ export async function updateItemCodeList(item: ItemCodeList): Promise<ItemCodeLi
   if (!db) return item
 
   await updateDoc(doc(db, ITEM_CODE_LIST_COLLECTION, item.id), {
-    MHBCode: item.MHBCode,
-    IzuyoshiJPCode: item.IzuyoshiJPCode,
-    IzuyoshiVNCode: item.IzuyoshiVNCode,
-    Description: item.Description,
+    MHBCode: item.MHBCode ?? "",
+    IzuyoshiVNCode: item.IzuyoshiVNCode ?? "",
+    Description: item.Description ?? "",
   })
-  return { ...item, MAVCode: item.id }
+  return item
 }
 
 export async function deleteItemCodeList(itemId: string): Promise<void> {
