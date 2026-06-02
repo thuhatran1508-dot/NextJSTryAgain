@@ -23,26 +23,6 @@ function makeSafeDocumentId(text) {
     .substring(0, 1400);
 }
 
-// Neu IzuyoshiJPCode bi trung, tu dong them __2, __3 de khong ghi de du lieu cu
-async function getUniqueDocumentId(collectionName, baseId, usedIds) {
-  let documentId = baseId;
-  let count = 2;
-
-  while (true) {
-    if (!usedIds.has(documentId)) {
-      const snapshot = await db.collection(collectionName).doc(documentId).get();
-
-      if (!snapshot.exists) {
-        usedIds.add(documentId);
-        return documentId;
-      }
-    }
-
-    documentId = `${baseId}__${count}`;
-    count++;
-  }
-}
-
 function getValue(row, possibleNames) {
   for (const name of possibleNames) {
     if (row[name] !== undefined && row[name] !== null) {
@@ -102,11 +82,13 @@ async function importData() {
     }
 
     const baseDocumentId = makeSafeDocumentId(IzuyoshiJPCode);
-    const documentId = await getUniqueDocumentId(
-      collectionName,
-      baseDocumentId,
-      usedIds
-    );
+    const documentId = baseDocumentId;
+
+    if (usedIds.has(documentId)) {
+      skipCount++;
+      continue;
+    }
+    usedIds.add(documentId);
 
     const data = {
       IzuyoshiJPCode,
@@ -117,7 +99,7 @@ async function importData() {
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
-    await db.collection(collectionName).doc(documentId).set(data);
+    await db.collection(collectionName).doc(documentId).set(data, { merge: true });
 
     successCount++;
     console.log(`Imported: ${documentId}`);
@@ -126,7 +108,7 @@ async function importData() {
   console.log("------------------------------------");
   console.log("Hoan thanh import UnitPriceList!");
   console.log(`Thanh cong: ${successCount}`);
-  console.log(`Bo qua vi khong co IzuyoshiJPCode: ${skipCount}`);
+  console.log(`Bo qua vi khong co IzuyoshiJPCode hoac trung trong file: ${skipCount}`);
 }
 
 importData().catch((error) => {

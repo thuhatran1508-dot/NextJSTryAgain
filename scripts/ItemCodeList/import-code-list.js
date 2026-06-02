@@ -2,8 +2,8 @@ const admin = require("firebase-admin");
 const XLSX = require("xlsx");
 const path = require("path");
 
-// Cau hinh service account
-const serviceAccount = require("../serviceAccountKey.json");
+// Lay service account tu thu muc goc project
+const serviceAccount = require("../../serviceAccountKey.json");
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
@@ -12,7 +12,7 @@ admin.initializeApp({
 const db = admin.firestore();
 
 // Ten file Excel cua ban
-const excelFilePath = path.join(__dirname, "../CodeList.xlsx");
+const excelFilePath = path.join(__dirname, "CodeList.xlsx");
 
 // Doc sheet dau tien
 const workbook = XLSX.readFile(excelFilePath);
@@ -31,30 +31,6 @@ function makeSafeDocumentId(text) {
     .replace(/\//g, "／")
     .replace(/\s+/g, " ")
     .substring(0, 1400);
-}
-
-async function getUniqueDocumentId(collectionName, baseId, usedIds) {
-  let documentId = baseId;
-  let count = 2;
-
-  while (usedIds.has(documentId)) {
-    documentId = `${baseId}__${count}`;
-    count++;
-  }
-
-  const snapshot = await db.collection(collectionName).doc(documentId).get();
-
-  while (snapshot.exists || usedIds.has(documentId)) {
-    documentId = `${baseId}__${count}`;
-    count++;
-    const checkSnapshot = await db.collection(collectionName).doc(documentId).get();
-    if (!checkSnapshot.exists && !usedIds.has(documentId)) {
-      break;
-    }
-  }
-
-  usedIds.add(documentId);
-  return documentId;
 }
 
 async function importData() {
@@ -80,7 +56,13 @@ async function importData() {
     }
 
     const baseDocumentId = makeSafeDocumentId(IzuyoshiJPCode);
-    const documentId = await getUniqueDocumentId(collectionName, baseDocumentId, usedIds);
+    const documentId = baseDocumentId;
+
+    if (usedIds.has(documentId)) {
+      skipCount++;
+      continue;
+    }
+    usedIds.add(documentId);
 
     const data = {
       Description,
@@ -96,7 +78,7 @@ async function importData() {
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
-    await db.collection(collectionName).doc(documentId).set(data);
+    await db.collection(collectionName).doc(documentId).set(data, { merge: true });
 
     successCount++;
     console.log(`Imported: ${documentId}`);

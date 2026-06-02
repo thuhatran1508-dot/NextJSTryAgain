@@ -23,26 +23,6 @@ function makeSafeDocumentId(text) {
     .substring(0, 1400);
 }
 
-// Neu CusName(Eng) bi trung, tu dong them __2, __3 de khong ghi de du lieu cu
-async function getUniqueDocumentId(collectionName, baseId, usedIds) {
-  let documentId = baseId;
-  let count = 2;
-
-  while (true) {
-    if (!usedIds.has(documentId)) {
-      const snapshot = await db.collection(collectionName).doc(documentId).get();
-
-      if (!snapshot.exists) {
-        usedIds.add(documentId);
-        return documentId;
-      }
-    }
-
-    documentId = `${baseId}__${count}`;
-    count++;
-  }
-}
-
 async function importData() {
   const workbook = XLSX.readFile(excelFilePath);
   const sheetName = workbook.SheetNames[0];
@@ -67,18 +47,20 @@ async function importData() {
     const CusNameJP = String(row["CusName(JP)"] || "").trim();
     const CusAddress = String(row["CusAddress"] || "").trim();
 
-    // Bo qua dong khong co CusName(Eng)
-    if (!CusNameEng) {
+    // Bo qua dong khong co CusCode vi day la khoa lookup trong VBA
+    if (!CusCode) {
       skipCount++;
       continue;
     }
 
-    const baseDocumentId = makeSafeDocumentId(CusNameEng);
-    const documentId = await getUniqueDocumentId(
-      collectionName,
-      baseDocumentId,
-      usedIds
-    );
+    const baseDocumentId = makeSafeDocumentId(CusCode);
+    const documentId = baseDocumentId;
+
+    if (usedIds.has(documentId)) {
+      skipCount++;
+      continue;
+    }
+    usedIds.add(documentId);
 
     const data = {
       CusCode,
@@ -95,7 +77,7 @@ async function importData() {
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
-    await db.collection(collectionName).doc(documentId).set(data);
+    await db.collection(collectionName).doc(documentId).set(data, { merge: true });
 
     successCount++;
     console.log(`Imported: ${documentId}`);
@@ -104,7 +86,7 @@ async function importData() {
   console.log("------------------------------------");
   console.log("Hoan thanh import CusCodeList!");
   console.log(`Thanh cong: ${successCount}`);
-  console.log(`Bo qua vi khong co CusName(Eng): ${skipCount}`);
+  console.log(`Bo qua vi khong co CusCode hoac trung trong file: ${skipCount}`);
 }
 
 importData().catch((error) => {
