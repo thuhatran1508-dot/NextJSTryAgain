@@ -394,44 +394,150 @@ async function parseImportFile(file: File, tabKey: keyof typeof tabLabels) {
   })
 }
 
-function renderTable(
-  headers: string[],
-  rows: string[][],
-  actionCells: React.ReactNode[] = [],
-  emptyStateText = "データがありません。"
-) {
+type RenderTableProps = {
+  headers: string[]
+  rows: string[][]
+  actionCells?: React.ReactNode[]
+  emptyStateText?: string
+}
+
+function RenderTable({ headers, rows, actionCells = [], emptyStateText = "データがありません。" }: RenderTableProps) {
   const hasActions = actionCells.length > 0
 
+  // Column visibility state
+  const initialVisible: Record<string, boolean> = {}
+  headers.forEach((h) => (initialVisible[h] = true))
+  if (hasActions) initialVisible["__actions__"] = true
+
+  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(initialVisible)
+
+  // Sorting
+  const [sortIndex, setSortIndex] = useState<number | null>(null)
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
+
+  // Pagination
+  const pageOptions = [10, 20, 30, 40, 50]
+  const [pageSize, setPageSize] = useState<number | "all">(10)
+  const [page, setPage] = useState(1)
+
+  const visibleHeaders = headers.filter((h) => visibleColumns[h])
+
+  const processedRows = useMemo(() => {
+    let out = rows.map((r) => r.slice())
+    if (sortIndex !== null) {
+      out = out.sort((a, b) => {
+        const va = String(a[sortIndex] ?? "")
+        const vb = String(b[sortIndex] ?? "")
+        if (va === vb) return 0
+        if (sortDir === "asc") return va > vb ? 1 : -1
+        return va > vb ? -1 : 1
+      })
+    }
+    return out
+  }, [rows, sortIndex, sortDir])
+
+  const totalRows = processedRows.length
+  const totalPages = pageSize === "all" ? 1 : Math.max(1, Math.ceil(totalRows / (pageSize as number)))
+  useEffect(() => {
+    if (page > totalPages) setPage(1)
+  }, [totalPages])
+
+  const pagedRows = useMemo(() => {
+    if (pageSize === "all") return processedRows
+    const ps = pageSize as number
+    const start = (page - 1) * ps
+    return processedRows.slice(start, start + ps)
+  }, [processedRows, pageSize, page])
+
+  const toggleColumn = (key: string) => setVisibleColumns((s) => ({ ...s, [key]: !s[key] }))
+
   return (
-    <div className="overflow-x-auto overflow-y-auto max-h-[56vh] rounded-md border border-muted-foreground/10 bg-background">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            {headers.map((header) => (
-              <TableHead key={header}>{header}</TableHead>
+    <div>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            <span className="text-sm text-muted-foreground">Columns:</span>
+            {headers.map((h) => (
+              <label key={h} className="inline-flex items-center text-sm ml-2">
+                <input type="checkbox" className="mr-1" checked={!!visibleColumns[h]} onChange={() => toggleColumn(h)} />
+                {h}
+              </label>
             ))}
-            {hasActions ? <TableHead>操作</TableHead> : null}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.length > 0 ? (
-            rows.map((row, rowIndex) => (
-              <TableRow key={`${rowIndex}-${row.join("-")}`}>
-                {row.map((cell, cellIndex) => (
-                  <TableCell key={`${rowIndex}-${cellIndex}`}>{cell}</TableCell>
-                ))}
-                {hasActions ? <TableCell>{actionCells[rowIndex]}</TableCell> : null}
-              </TableRow>
-            ))
-          ) : (
+            {hasActions && (
+              <label className="inline-flex items-center text-sm ml-2">
+                <input type="checkbox" className="mr-1" checked={!!visibleColumns["__actions__"]} onChange={() => toggleColumn("__actions__")} />
+                操作
+              </label>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-sm text-muted-foreground">Rows:</label>
+          <select value={pageSize} onChange={(e) => { setPageSize(e.target.value === "all" ? "all" : Number(e.target.value)); setPage(1) }} className="border px-2 py-1 rounded">
+            {pageOptions.map((n) => (
+              <option key={n} value={n}>{n} / page</option>
+            ))}
+            <option value="all">All</option>
+          </select>
+          <div className="text-sm text-muted-foreground">{totalRows} rows</div>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto max-h-[56vh] rounded-md border border-muted-foreground/10 bg-background">
+        <Table>
+          <TableHeader className="sticky top-0 bg-card z-10">
             <TableRow>
-              <TableCell colSpan={headers.length + (hasActions ? 1 : 0)} className="h-24 text-center text-sm text-muted-foreground">
-                {emptyStateText}
-              </TableCell>
+              {/* actions column first */}
+              {hasActions && visibleColumns["__actions__"] ? <TableHead>操作</TableHead> : null}
+              {headers.map((header, index) => (
+                visibleColumns[header] ? (
+                  <TableHead key={header}>
+                    <div className="flex items-center gap-2">
+                      <button
+                        className="text-sm"
+                        onClick={() => {
+                          if (sortIndex === index) setSortDir((d) => (d === "asc" ? "desc" : "asc"))
+                          else { setSortIndex(index); setSortDir("asc") }
+                        }}
+                      >
+                        {sortIndex === index ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+                      </button>
+                      <span>{header}</span>
+                    </div>
+                  </TableHead>
+                ) : null
+              ))}
             </TableRow>
-          )}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {pagedRows.length > 0 ? (
+              pagedRows.map((row, rowIndex) => (
+                <TableRow key={`${rowIndex}-${row.join("-")}`}>
+                  {hasActions && visibleColumns["__actions__"] ? <TableCell>{actionCells[rowIndex + (pageSize === "all" ? 0 : (page - 1) * (pageSize as number))]}</TableCell> : null}
+                  {row.map((cell, cellIndex) => (
+                    visibleColumns[headers[cellIndex]] ? <TableCell key={`${rowIndex}-${cellIndex}`}>{cell}</TableCell> : null
+                  ))}
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={(headers.length + (hasActions ? 1 : 0))} className="h-24 text-center text-sm text-muted-foreground">
+                  {emptyStateText}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      <div className="mt-2 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <button className="btn" onClick={() => setPage((p) => Math.max(1, p - 1))}>Prev</button>
+          <span className="text-sm">Page {page} / {totalPages}</span>
+          <button className="btn" onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>Next</button>
+        </div>
+        <div className="text-sm">Showing {pageSize === "all" ? totalRows : Math.min(pageSize as number, totalRows)} rows</div>
+      </div>
     </div>
   )
 }
@@ -1510,16 +1616,11 @@ export default function MasterDataPage() {
                   </Dialog>
                 </div>
               </div>
-              {renderTable(
-                ["得意先コード", "顧客名（英語）", "顧客名（日本語）", "住所"],
-                filteredCusCodeList.map((item) => [
-                  item.CusCode ?? "",
-                  item.CusNameEng ?? "",
-                  item.CusNameJP ?? "",
-                  item.CusAddress ?? "",
-                ]),
-                cusActionCells
-              )}
+              <RenderTable
+                headers={["得意先コード", "顧客名（英語）", "顧客名（日本語）", "住所"]}
+                rows={filteredCusCodeList.map((item) => [item.CusCode ?? "", item.CusNameEng ?? "", item.CusNameJP ?? "", item.CusAddress ?? ""])}
+                actionCells={cusActionCells}
+              />
             </TabsContent>
 
             <TabsContent value="item" className="p-0">
@@ -1629,17 +1730,11 @@ export default function MasterDataPage() {
                   </Dialog>
                 </div>
               </div>
-              {renderTable(
-                ["MAVコード", "MHBコード", "伊予吉JPコード", "伊予吉VNコード", "説明"],
-                filteredItemCodeList.map((item) => [
-                  item.MAVCode ?? "",
-                  item.MHBCode ?? "",
-                  item.IzuyoshiJPCode ?? "",
-                  item.IzuyoshiVNCode ?? "",
-                  item.Description ?? "",
-                ]),
-                itemActionCells
-              )}
+              <RenderTable
+                headers={["MAVコード", "MHBコード", "伊予吉JPコード", "伊予吉VNコード", "説明"]}
+                rows={filteredItemCodeList.map((item) => [item.MAVCode ?? "", item.MHBCode ?? "", item.IzuyoshiJPCode ?? "", item.IzuyoshiVNCode ?? "", item.Description ?? ""])}
+                actionCells={itemActionCells}
+              />
             </TabsContent>
 
             <TabsContent value="unitPrice" className="p-0">
@@ -1710,11 +1805,11 @@ export default function MasterDataPage() {
                   </Dialog>
                 </div>
               </div>
-              {renderTable(
-                ["伊予吉JPコード", "単価"],
-                filteredUnitPriceList.map((item) => [item.IzuyoshiJPCode ?? "", item.UnitPrice ?? ""]),
-                unitPriceActionCells
-              )}
+              <RenderTable
+                headers={["伊予吉JPコード", "単価"]}
+                rows={filteredUnitPriceList.map((item) => [item.IzuyoshiJPCode ?? "", item.UnitPrice ?? ""])}
+                actionCells={unitPriceActionCells}
+              />
             </TabsContent>
 
             <TabsContent value="picwh" className="p-0">
@@ -1798,11 +1893,11 @@ export default function MasterDataPage() {
                   </Dialog>
                 </div>
               </div>
-              {renderTable(
-                ["PICコード", "倉庫コード", "詳細倉庫コード"],
-                filteredPicWhCodeList.map((item) => [item.PICCode ?? "", item.WarehouseCode ?? "", item.DetailWarehouseCode ?? ""]),
-                picWhActionCells
-              )}
+              <RenderTable
+                headers={["PICコード", "倉庫コード", "詳細倉庫コード"]}
+                rows={filteredPicWhCodeList.map((item) => [item.PICCode ?? "", item.WarehouseCode ?? "", item.DetailWarehouseCode ?? ""])}
+                actionCells={picWhActionCells}
+              />
             </TabsContent>
 
             <TabsContent value="unitCode" className="p-0">
@@ -1873,11 +1968,11 @@ export default function MasterDataPage() {
                   </Dialog>
                 </div>
               </div>
-              {renderTable(
-                ["発注単位", "CSVコード"],
-                filteredUnitCodeList.map((item) => [item.OrderUnit ?? "", item.CsvCode ?? ""]),
-                unitCodeActionCells
-              )}
+              <RenderTable
+                headers={["発注単位", "CSVコード"]}
+                rows={filteredUnitCodeList.map((item) => [item.OrderUnit ?? "", item.CsvCode ?? ""])}
+                actionCells={unitCodeActionCells}
+              />
             </TabsContent>
           </div>
         </Tabs>
