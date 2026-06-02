@@ -21,6 +21,7 @@ import {
   Bell,
   Link2,
   Palette,
+  Code,
   type LucideIcon,
 } from "lucide-react"
 
@@ -138,6 +139,7 @@ export function CommandSearch({ open, onOpenChange }: CommandSearchProps) {
     { title: "Tasks", url: "/tasks", group: "Apps", icon: CheckSquare },
     { title: "Chat", url: "/chat", group: "Apps", icon: MessageCircle },
     { title: "Calendar", url: "/calendar", group: "Apps", icon: Calendar },
+    { title: "Master Data", url: "/masterdata", group: "Apps", icon: Code },
 
     // Auth Pages
     { title: "Sign In", url: "/sign-in", group: "Auth Pages", icon: Shield },

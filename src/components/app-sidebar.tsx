@@ -80,6 +80,11 @@ const data = {
           icon: Users,
         },
         {
+          title: "Master Data",
+          url: "/masterdata",
+          icon: Code,
+        },
+        {
           title: "ItemCodeList",
           url: "/item-code-list",
           icon: Code,
