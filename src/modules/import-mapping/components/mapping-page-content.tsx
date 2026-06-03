@@ -129,6 +129,7 @@ function getChangedAtText(value: unknown) {
 export function MappingPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const initialSelectedMappingId = React.useRef(searchParams.get("id"))
   const { data: session } = useSession()
   const userEmail = session?.user?.email ?? "system"
 
@@ -158,7 +159,7 @@ export function MappingPageContent() {
       const list = await mappingConfigRepository.list()
       const nextList = list.length ? list : [createDefaultImportMappingConfig()]
       setMappings(nextList)
-      const requestedId = searchParams.get("id")
+      const requestedId = initialSelectedMappingId.current
       const nextSelected = nextList.find((mapping) => mapping.id === requestedId)
       setSelectedMappingId(nextSelected?.id ?? "")
       setDraft(nextSelected ? structuredClone(nextSelected) : null)
@@ -169,7 +170,7 @@ export function MappingPageContent() {
     } finally {
       setLoading(false)
     }
-  }, [searchParams])
+  }, [])
 
   React.useEffect(() => {
     void loadMappings()
