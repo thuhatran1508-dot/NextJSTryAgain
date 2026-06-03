@@ -605,6 +605,7 @@ export default function MasterDataPage() {
   const [picWhCodeList, setPicWhCodeList] = useState<PICWHCodeListItem[]>([])
   const [unitCodeList, setUnitCodeList] = useState<UnitCodeListItem[]>([])
 
+
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -631,6 +632,8 @@ export default function MasterDataPage() {
   const [editingUnitPrice, setEditingUnitPrice] = useState<UnitPriceListItem | null>(null)
   const [editingPicWh, setEditingPicWh] = useState<PICWHCodeListItem | null>(null)
   const [editingUnitCode, setEditingUnitCode] = useState<UnitCodeListItem | null>(null)
+
+  
 
   const [importOpen, setImportOpen] = useState(false)
   const [importFileName, setImportFileName] = useState("")
@@ -659,11 +662,13 @@ export default function MasterDataPage() {
         getUnitCodeList(),
       ])
 
+
       setCusCodeList(cus)
       setItemCodeList(items)
       setUnitPriceList(prices)
       setPicWhCodeList(picwh)
       setUnitCodeList(units)
+      
     } catch (err) {
       console.error(err)
       setError("マスタデータの読み込み中にエラーが発生しました。")
@@ -1435,6 +1440,7 @@ export default function MasterDataPage() {
     setEditingUnitCode(item)
     setDeleteUnitCodeOpen(true)
   }
+  
 
   const cusActionCells = filteredCusCodeList.map((item) => (
     <div className="flex gap-2" key={item.id}>
@@ -1974,6 +1980,8 @@ export default function MasterDataPage() {
                 actionCells={unitCodeActionCells}
               />
             </TabsContent>
+
+            
           </div>
         </Tabs>
       </div>

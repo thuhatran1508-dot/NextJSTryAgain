@@ -134,3 +134,28 @@ File này chứa prompt thực thi để AI/Codex làm trực tiếp chức năn
 ## Kết luận
 
 File này giờ là hướng dẫn prompt để yêu cầu AI/Codex làm trực tiếp tính năng Master Data trên webapp, không chỉ lập kế hoạch.
+
+## Yêu cầu bổ sung & Ghi chú triển khai (2026-06-02)
+
+Yêu cầu UI/UX mới cần thêm vào prompt hoặc ghi chú triển khai:
+
+- Di chuyển các button `編集` / `削除` lên cột đầu tiên của bảng (action-first column).
+- Cố định header của bảng (sticky header) để tiêu đề luôn hiển thị khi cuộn dữ liệu dài.
+- Thêm nút sắp xếp ở đầu mỗi tiêu đề cột (per-column sort) với trạng thái `asc/desc`.
+- Cho phép ẩn/hiện cột (column visibility) bằng checklist trong toolbar.
+- Thêm phân trang với lựa chọn page-size: `10,20,30,40,50,All` và hiển thị tổng trang/tổng dòng.
+- Export (CSV/XLSX) cần tuân theo filter và column visibility; disable export filtered khi không có kết quả.
+
+Tóm tắt cách tôi đã triển khai ban đầu trong codebase:
+
+- Thay `renderTable(...)` thành component `RenderTable` trong [src/app/(private)/masterdata/page.tsx](src/app/(private)/masterdata/page.tsx#L1): action-first column, sticky header, client-side sort, column visibility toggles, và pagination.
+- Các cuộc gọi cũ `renderTable(...)` đã được thay bằng JSX `<RenderTable ... />` cho tất cả 5 tab.
+- Việc export/filtering hiện cần bổ sung để tôn trọng `visibleColumns` và `current filtered rows` — có thể mở rộng hàm export hiện tại.
+
+Hướng dẫn cho prompt tiếp theo (nếu bạn muốn AI tự động hoàn thiện):
+
+1. Cập nhật prompt để yêu cầu "Export chỉ các cột đang hiển thị" kèm theo danh sách `visibleColumns` được truyền vào hàm export.
+2. Nếu cần performance cho dataset lớn, yêu cầu refactor sang TanStack Table và áp dụng server-side paging/sorting.
+3. Thêm test cases: kiểm tra action-first column, sticky header, sort toggle, column visibility lưu trạng thái, pagination edge-cases, và export-respect-visibility.
+
+Bạn muốn tôi tiếp tục và tự động nối export để tôn trọng `visibleColumns` và `filtered rows` không? Nếu có, tôi sẽ áp dụng thay đổi trong `src/app/(private)/masterdata/page.tsx` và trong hàm export hiện tại.

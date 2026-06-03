@@ -1,14 +1,6 @@
 "use client"
 
-import {
-  CreditCard,
-  EllipsisVertical,
-  LogOut,
-  BellDot,
-  CircleUser,
-} from "lucide-react"
-import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { EllipsisVertical, LogOut } from "lucide-react"
 import { signOut } from "next-auth/react"
 
 import { signOutUser } from "@/lib/firebase/auth"
@@ -16,9 +8,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
@@ -39,7 +30,6 @@ export function NavUser({
   }
 }) {
   const { isMobile } = useSidebar()
-  const router = useRouter()
   const fallback = getUserFallback(user.name, user.email)
 
   async function handleLogout() {
@@ -69,7 +59,7 @@ export function NavUser({
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">{user.name}</span>
                 <span className="text-muted-foreground truncate text-xs">
-                  {user.email || "Not signed in"}
+                  {user.email || "未ログイン"}
                 </span>
               </div>
               <EllipsisVertical className="ml-auto size-4" />
@@ -92,39 +82,18 @@ export function NavUser({
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium">{user.name}</span>
                   <span className="text-muted-foreground truncate text-xs">
-                    {user.email || "Not signed in"}
+                    {user.email || "未ログイン"}
                   </span>
                 </div>
               </div>
             </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuItem asChild className="cursor-pointer">
-                <Link href="/settings/account">
-                  <CircleUser />
-                  Account
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild className="cursor-pointer">
-                <Link href="/settings/billing">
-                  <CreditCard />
-                  Billing
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild className="cursor-pointer">
-                <Link href="/settings/notifications">
-                  <BellDot />
-                  Notifications
-                </Link>
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="cursor-pointer"
               onClick={handleLogout}
             >
               <LogOut />
-              Log out
+              ログアウト
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -134,7 +103,7 @@ export function NavUser({
 }
 
 function getUserFallback(name: string, email: string) {
-  const source = name && name !== "Loading..." && name !== "Guest" ? name : email
+  const source = name && name !== "読み込み中..." && name !== "ゲスト" ? name : email
   const initials = source
     .split(/[ @._-]+/)
     .filter(Boolean)

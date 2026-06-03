@@ -2,23 +2,7 @@
 
 import * as React from "react"
 import { useSession } from "next-auth/react"
-import {
-  LayoutPanelLeft,
-  LayoutDashboard,
-  Megaphone,
-  Mail,
-  CheckSquare,
-  MessageCircle,
-  Calendar,
-  Shield,
-  AlertTriangle,
-  Settings,
-  HelpCircle,
-  CreditCard,
-  LayoutTemplate,
-  Users,
-  Code,
-} from "lucide-react"
+import { Settings } from "lucide-react"
 import Link from "next/link"
 import { Logo } from "@/components/logo"
 
@@ -37,155 +21,12 @@ import {
 const data = {
   navGroups: [
     {
-      label: "Dashboards",
+      label: "メニュー",
       items: [
         {
-          title: "Dashboard 1",
-          url: "/dashboard",
-          icon: LayoutDashboard,
-        },
-        {
-          title: "Dashboard 2",
-          url: "/dashboard-2",
-          icon: LayoutPanelLeft,
-        },
-      ],
-    },
-    {
-      label: "Apps",
-      items: [
-        {
-          title: "Mail",
-          url: "/mail",
-          icon: Mail,
-        },
-        {
-          title: "Tasks",
-          url: "/tasks",
-          icon: CheckSquare,
-        },
-        {
-          title: "Chat",
-          url: "/chat",
-          icon: MessageCircle,
-        },
-        {
-          title: "Calendar",
-          url: "/calendar",
-          icon: Calendar,
-        },
-        {
-          title: "Users",
-          url: "/users",
-          icon: Users,
-        },
-        {
-          title: "Master Data",
-          url: "/masterdata",
-          icon: Code,
-        },
-        {
-          title: "ItemCodeList",
-          url: "/item-code-list",
-          icon: Code,
-        },
-      ],
-    },
-    {
-      label: "Pages",
-      items: [
-        {
-          title: "Landing",
-          url: "/landing",
-          target: "_blank",
-          icon: LayoutTemplate,
-        },
-        {
-          title: "Auth Pages",
-          url: "#",
-          icon: Shield,
-          items: [
-            {
-              title: "Sign In",
-              url: "/sign-in",
-            },
-            {
-              title: "Sign Up",
-              url: "/sign-up",
-            },
-            {
-              title: "Forgot Password",
-              url: "/forgot-password",
-            },
-          ],
-        },
-        {
-          title: "Errors",
-          url: "#",
-          icon: AlertTriangle,
-          items: [
-            {
-              title: "Unauthorized",
-              url: "/errors/unauthorized",
-            },
-            {
-              title: "Forbidden",
-              url: "/errors/forbidden",
-            },
-            {
-              title: "Not Found",
-              url: "/errors/not-found",
-            },
-            {
-              title: "Internal Server Error",
-              url: "/errors/internal-server-error",
-            },
-            {
-              title: "Under Maintenance",
-              url: "/errors/under-maintenance",
-            },
-          ],
-        },
-        {
-          title: "Settings",
-          url: "#",
+          title: "設定",
+          url: "/settings",
           icon: Settings,
-          items: [
-            {
-              title: "User Settings",
-              url: "/settings/user",
-            },
-            {
-              title: "Account Settings",
-              url: "/settings/account",
-            },
-            {
-              title: "Plans & Billing",
-              url: "/settings/billing",
-            },
-            {
-              title: "Appearance",
-              url: "/settings/appearance",
-            },
-            {
-              title: "Notifications",
-              url: "/settings/notifications",
-            },
-            {
-              title: "Connections",
-              url: "/settings/connections",
-            },
-          ],
-        },
-        {
-          title: "FAQs",
-          url: "/faqs",
-          icon: HelpCircle,
-        },
-        {
-          title: "Pricing",
-          url: "/pricing",
-          icon: CreditCard,
         },
       ],
     },
@@ -198,8 +39,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const user = {
     name:
       status === "loading"
-        ? "Loading..."
-        : session?.user?.name || session?.user?.email?.split("@")[0] || "Guest",
+        ? "読み込み中..."
+        : session?.user?.name || session?.user?.email?.split("@")[0] || "ゲスト",
     email: session?.user?.email ?? "",
     avatar: session?.user?.image ?? "",
   }
@@ -210,13 +51,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
-              <Link href="/dashboard">
+              <Link href="/settings">
                 <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                   <Logo size={24} className="text-current" />
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-medium">Claude Code</span>
-                  <span className="truncate text-xs">Admin Dashboard</span>
+                  <span className="truncate font-medium">受注CSV</span>
+                  <span className="truncate text-xs">設定管理</span>
                 </div>
               </Link>
             </SidebarMenuButton>

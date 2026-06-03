@@ -14,7 +14,7 @@ Quy trình mới cần giữ đúng logic đang làm trong Excel:
 6. Hiển thị thông tin còn thiếu và gợi ý cần update vào master data.
 7. Người dùng quyết định bổ sung master data để hoàn thiện dữ liệu hoặc export luôn với các ô thiếu để trống.
 8. Export CSV.
-9. Đây là webapp cho người Nhật dùng nên tất cả các thanh tiêu đề, buttoon, các alert... và tất cả các thứ khác đều bằng tiếng nhật (trừ master data)
+9. Đây là webapp cho người Nhật dùng nên tất cả thanh tiêu đề, button, alert, confirm, tooltip, label, validation message và các text UI/UX khác đều phải bằng tiếng Nhật (trừ dữ liệu master data do người dùng quản lý).
 ## Workflow Đề Xuất
 
 ### 1. Master Data
@@ -37,6 +37,40 @@ Hiện tại dữ liệu đầu vào của quy trình đến từ 2 nguồn chí
 2. Các giá trị được lấy trực tiếp từ file Excel đơn hàng import, ví dụ `K4`, `D4`, `K8`, `Q5`, `Q7` và các cột chi tiết từ dòng 17 trở xuống.
 
 Khi chuyển sang web app, cả 2 nhóm này không nên hard-code trong source code. Nên có màn hình cấu hình riêng để người dùng có thể thay đổi khi form đơn hàng hoặc rule xử lý thay đổi.
+
+#### 2.0. Cấu Trúc Màn Hình Cấu Hình Theo Quyết Định Mới
+
+Phần cấu hình Mapping không đặt thành một nhóm menu riêng gồm nhiều mục con nữa. Sidebar chỉ tạo một mục chính:
+
+- `設定`
+
+Bên trong `設定`, cấu trúc tạm thời như sau:
+
+- `Hiển thị`: tạm thời để trống. Phần này sẽ thiết lập sau trong phiên làm việc khác.
+- `マッピング一覧`: tab quan trọng của phần cấu hình Mapping.
+
+Không đặt các mục sau trong sidebar hoặc tab của phần cấu hình Mapping:
+
+- `インポート`
+- `バッチ処理`
+- `固定値設定`
+- `マスタデータ`
+- `照明`
+- `エクスポート履歴`
+
+Lý do:
+
+- `インポート`, `バッチ処理`, `エクスポート履歴` thuộc luồng xử lý nghiệp vụ import/export, không phải tab cấu hình Mapping.
+- `マスタデータ` đã có phân hệ riêng, không đặt lặp lại trong phần này.
+- `照明` không thuộc phạm vi cần làm ở giai đoạn này.
+- `固定値設定` không tách thành tab riêng trong cấu trúc mới; các giá trị cố định được quản lý như một kiểu `Cách lấy dữ liệu` trong từng dòng Mapping.
+
+Tab `マッピング一覧` là tab quan trọng của phần `設定`. Tab này cho phép người dùng quản lý Mapping theo từng cột CSV: thêm mới, sửa, xóa và lưu Mapping.
+
+Mỗi Mapping cần có:
+
+- Tên Mapping.
+- Danh sách thiết lập quy tắc nhập liệu cho từng cột trong file CSV.
 
 #### 2.1. Quản Lý Giá Trị Cố Định
 
@@ -89,14 +123,57 @@ Hiện tại macro `ImportOrderData` đang lấy dữ liệu từ file Excel đ�
 Yêu cầu cho màn hình quản lý mapping dữ liệu import:
 
 - Cho phép xem danh sách mapping nguồn - đích hiện tại.
+- `Admin` và `Operator` có quyền xử lý tất cả tác vụ trong màn hình Mapping như nhau, bao gồm xem, tạo, sửa, xóa, lưu, preview và apply mapping. Không phân biệt quyền giữa 2 role này trong phạm vi Mapping.
 - Cho phép sửa ô nguồn, cột nguồn hoặc cột đích nếu form Excel đơn hàng thay đổi.
 - Cho phép cấu hình một nguồn map sang nhiều cột đích, ví dụ `D4` map sang `E`, `I`, `J`.
 - Cho phép cấu hình biểu thức đơn giản, ví dụ `Q7 - 1` cho các cột `X` và `AO`.
 - Cho phép phân biệt dữ liệu cấp sheet và dữ liệu theo dòng chi tiết.
-- Cho phép cấu hình dòng bắt đầu đọc chi tiết, hiện tại là dòng `17`.
-- Cho phép cấu hình cột dùng để xác định dòng chi tiết hợp lệ, hiện tại là cột `R`.
+- Cho phép quản lý `startDetailRow` (明細開始行) trong Mapping để người dùng nhập/sửa dòng bắt đầu đọc chi tiết, hiện tại gợi ý là dòng `17`.
+- Cho phép quản lý `validRowColumn` (有効行判定列) trong Mapping để người dùng nhập/sửa cột dùng xác định dòng chi tiết hợp lệ, hiện tại gợi ý là cột `R`.
+- `startDetailRow` và `validRowColumn` là 2 chỉ tiêu bắt buộc. Nếu người dùng không nhập, nhập sai kiểu hoặc nhập giá trị không hợp lệ, hệ thống phải báo lỗi bằng tiếng Nhật và không cho lưu mapping, preview, import hoặc apply mapping tiếp.
 - Cho phép cấu hình theo khách hàng hoặc theo loại form đơn hàng nếu sau này MHB/MAV dùng form khác nhau.
 - Lưu lịch sử thay đổi mapping: ai sửa, sửa lúc nào, giá trị cũ, giá trị mới.
+
+- Cho phép cấu hình định dạng cho từng cột đích (ví dụ: `string`, `number`, `date` với `yyyymmdd`, hoặc `date` với offset như `Q7 - 1`).
+- Khi hiển thị danh sách mapping, sắp xếp theo thứ tự cột CSV (A → B → C → ...) để người dùng dễ theo dõi.
+- Toàn bộ UI/UX của màn hình Mapping phải dùng tiếng Nhật, ví dụ: `設定`, `マッピング一覧`, `新規マッピング`, `編集`, `削除`, `保存`, `プレビュー`, `適用`, `明細開始行`, `有効行判定列`. Các lỗi bắt buộc nhập nên hiển thị dạng `明細開始行を入力してください。` và `有効行判定列を入力してください。`
+
+Trong tab `マッピング一覧`, cấu trúc cấu hình nhanh cho từng dòng Mapping:
+
+| Cột trong File CSV | Tên Cột | Cách lấy dữ liệu |
+| --- | --- | --- |
+| `C` | `分納区分` | Người dùng chọn một cách lấy dữ liệu |
+
+Các lựa chọn `Cách lấy dữ liệu`:
+
+- Lấy từ file đơn hàng.
+- Giá trị cố định.
+- Đối chiếu / lấy dữ liệu từ master data.
+- Công thức tính toán.
+
+Chi tiết từng cách lấy dữ liệu:
+
+- `Lấy từ file đơn hàng`: người dùng chọn kiểu lấy dữ liệu:
+  - Lấy từ 1 ô cố định.
+  - Lấy từ 1 mảng dữ liệu.
+  - Lấy bằng công thức tính toán dựa trên dữ liệu lấy vào từ file đơn hàng.
+- Nếu lấy từ 1 ô cố định: người dùng nhập vị trí ô nguồn, ví dụ `K4`, `Q5`, `Q7`.
+- Nếu lấy từ 1 mảng dữ liệu: người dùng nhập cột nguồn cần lấy dữ liệu, dòng bắt đầu, và điều kiện xác định dòng kết thúc. Điều kiện kết thúc có thể là dòng cuối có giá trị ở một cột được chọn.
+- Nếu lấy bằng công thức dựa trên dữ liệu file đơn hàng: người dùng nhập dữ liệu nguồn là số hay mảng, vị trí ô/cột nguồn, và công thức. Giai đoạn đầu áp dụng chủ yếu cho trường hợp lấy ngày tháng rồi cộng/trừ một số ngày, ví dụ lấy `Q7` rồi trừ `1` ngày.
+- Format dữ liệu lấy vào gồm 3 loại:
+  - Giữ nguyên format của file gốc.
+  - Dạng number `00,000.00`.
+  - Dạng ngày tháng `yyyymmdd`.
+- `Giá trị cố định`: cho phép nhập trực tiếp giá trị cố định cho cột CSV tương ứng.
+- `Công thức tính toán`: cho phép nhập công thức tính toán theo cách hiển thị như trong Excel. Ví dụ `=A*C` nghĩa là cột CSV hiện tại có giá trị bằng kết quả phép nhân giữa giá trị ở cột `A` và giá trị ở cột `C` của cùng dòng CSV đang xét.
+- `Đối chiếu / lấy dữ liệu từ master data`: mô phỏng logic giống hàm `VLOOKUP` trong Excel. Người dùng cần nhập/chọn:
+  - Cột có dữ liệu cần tham chiếu trong file CSV.
+  - Collection master data cần tham chiếu. UI hiển thị danh sách collection master data để người dùng chọn.
+  - Field dùng để tham chiếu trong collection đã chọn. UI hiển thị danh sách field của collection đã chọn.
+  - Field cần lấy ra trong document đã tìm thấy. UI hiển thị danh sách field của collection đã chọn.
+  - Cột CSV nhận kết quả trả về.
+
+Màn hình phải cho phép thêm mới, xóa, sửa và lưu Mapping.
 
 Khi import Excel, hệ thống sẽ đọc mapping từ cấu hình này. Nếu sau này form đơn hàng thay đổi vị trí ô hoặc cột, người dùng chỉ cần cập nhật mapping trên giao diện, không cần sửa source code.
 
@@ -125,8 +202,9 @@ Hệ thống sẽ:
 - Đọc từng workbook.
 - Đọc từng sheet hợp lệ.
 - Bỏ qua sheet ẩn nếu thư viện đọc Excel hỗ trợ.
-- Đọc dữ liệu chi tiết từ dòng bắt đầu được cấu hình, mặc định là dòng `17`.
-- Chỉ lấy những dòng có dữ liệu ở cột điều kiện được cấu hình, mặc định là cột `R`.
+- Trước khi parse, kiểm tra mapping đã chọn có `startDetailRow` và `validRowColumn` hợp lệ. Nếu thiếu hoặc không hợp lệ thì báo lỗi bằng tiếng Nhật và dừng import.
+- Đọc dữ liệu chi tiết từ `startDetailRow` được cấu hình trong Mapping.
+- Chỉ lấy những dòng có dữ liệu ở `validRowColumn` được cấu hình trong Mapping.
 - Map dữ liệu nguồn vào cấu trúc trung gian tương đương sheet `CSVExport` theo cấu hình mapping import.
 
 Mỗi lần import nên tạo một `Import Batch` để theo dõi riêng.
@@ -275,7 +353,10 @@ Thông tin lịch sử export nên gồm:
 - Màn hình quản lý các master data chính.
 - Màn hình quản lý các giá trị cố định như `C5`, `D5`, `O5`, `P5`, `Q5`, `R5`, `S5`, `U5`, `V5`, `AE5`.
 - Màn hình quản lý mapping dữ liệu lấy từ file Excel đơn hàng import sang các cột CSVExport.
-- Cho phép cấu hình dòng bắt đầu đọc chi tiết và cột điều kiện xác định dòng hợp lệ.
+- Trong Mapping, `Admin` và `Operator` có full quyền như nhau cho tất cả tác vụ, không phân biệt.
+- Cho phép người dùng nhập/sửa `startDetailRow` và `validRowColumn` trực tiếp trong Mapping.
+- Bắt buộc validate `startDetailRow` và `validRowColumn`; nếu thiếu hoặc không hợp lệ thì báo lỗi bằng tiếng Nhật và không cho lưu/import/apply mapping tiếp.
+- Toàn bộ UI/UX, label, button, alert, confirm và validation message của web app phải bằng tiếng Nhật, trừ dữ liệu master data.
 - Field nhập/sửa mã PIC tương ứng `T5` ngay trên màn hình xử lý CSV/import batch.
 - Upload và parse file Excel đơn hàng.
 - Tạo batch import.
@@ -294,8 +375,6 @@ Thông tin lịch sử export nên gồm:
 
 - Import master data từ file Excel/CSV.
 -Export master data ra file Excel/CSV.
-- Import/export cấu hình giá trị cố định.
-- Import/export cấu hình mapping file Excel đơn hàng.
 - Preview dữ liệu trước khi lưu batch.
 - Giao diện sửa nhanh các dòng dữ liệu lỗi.
 - Giao diện nhập liệu nhanh bổ sung dữ liệu thiếu sau đó cho phép tự động nhập liệu bổ sung vào master data tương ứng
@@ -305,7 +384,7 @@ Thông tin lịch sử export nên gồm:
 - Lịch sử thay đổi master data.
 - Lịch sử thay đổi giá trị cố định.
 - Lịch sử export CSV.
-- Phân quyền Admin/Operator/Viewer.
+- Phân quyền Viewer chỉ xem nếu cần. Riêng Mapping thì `Admin` và `Operator` luôn có quyền xử lý đầy đủ như nhau.
 
 
 ### Could Have
@@ -334,6 +413,9 @@ Thông tin lịch sử export nên gồm:
 Master Data + Cau hinh gia tri co dinh + Cau hinh mapping import
     |
     v
+Kiem tra startDetailRow + validRowColumn trong Mapping
+    |
+    v
 Import Excel
     |
     v
@@ -358,6 +440,9 @@ Co loi/thieu thong tin?
 - Master data là nền tảng của toàn bộ quy trình, nên cần ưu tiên làm ổn định trước.
 - Các giá trị cố định cần được quản lý bằng cấu hình, không hard-code trong source code.
 - Mapping dữ liệu từ file Excel đơn hàng cũng cần được quản lý bằng cấu hình để khi form import thay đổi thì không cần sửa code.
+- `startDetailRow` và `validRowColumn` thuộc cấu hình Mapping, là bắt buộc nhập và phải được validate trước khi lưu mapping hoặc import Excel.
+- Trong phạm vi Mapping, không tách quyền thao tác giữa `Admin` và `Operator`; cả hai role có full quyền xử lý như nhau.
+- UI/UX phải thống nhất tiếng Nhật cho toàn bộ text hệ thống để phù hợp người dùng Nhật.
 - Giá trị nhập tay tương ứng `T5` nên lưu theo từng batch và đặt ngay trên màn hình xử lý CSV để người dùng sửa bất cứ lúc nào.
 - Validation không chỉ báo lỗi, mà phải chỉ ra người dùng cần bổ sung thông tin vào danh mục nào.
 - Export CSV là bước cuối cùng, nhưng không bị khóa tuyệt đối nếu dữ liệu chưa đầy đủ.

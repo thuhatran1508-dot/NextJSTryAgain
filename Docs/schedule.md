@@ -373,6 +373,8 @@ Can kiem tra:
 - Sua `validRowColumn`.
 - Sua mapping mot nguon ra nhieu cot.
 - Luu va refresh khong mat.
+ - Cho phep khai bao `format` cho tung mapping (string, number, date `yyyymmdd`, date + offset).
+ - Co the sua `entries` dang JSON (cho phan dau nhanh) hoac UI form, va danh sach entries duoc hien thi/sap xep theo thu tu cot CSV (A->B->C...).
 
 Tieu chi xong:
 

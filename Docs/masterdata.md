@@ -399,6 +399,40 @@ Use case:
 
 ### User Story 2.1.9 - Xoa Master Data
 
+## Yêu cầu bổ sung (2026-06-02)
+
+Yêu cầu UI/UX mới do người dùng chỉ định:
+
+- Đưa các button `編集` / `削除` (sửa / xóa) lên cột đầu tiên của bảng (action-first column).
+- Cố định header của bảng (sticky header) để khi cuộn xuống vẫn thấy tiêu đề.
+- Thêm tùy chọn sắp xếp cho mỗi tiêu đề cột (per-column sort).
+- Thêm tùy chọn ẩn/hiện cột (column visibility) để người dùng chọn cột cần xem.
+- Thêm phân trang với chọn kích thước trang: 10 / 20 / 30 / 40 / 50 / All và hiển thị tổng số trang / tổng dòng.
+- Export (CSV/XLSX) phải tôn trọng filter/visible-columns; disable "export filtered" khi không có kết quả lọc.
+
+## Cách triển khai (tóm tắt thực hiện)
+
+Những thay đổi đã triển khai trong repository để đáp ứng yêu cầu trên:
+
+- Thay thế helper `renderTable(...)` bằng component React `RenderTable` có:
+  - Cột "操作" (action) hiển thị ở cột đầu nếu có action.
+  - Header cố định (`sticky top-0`) để giữ tiêu đề khi cuộn.
+  - Sort client-side theo cột (click đổi `asc`/`desc`).
+  - Column visibility: checkbox toggles cho từng cột (và cho cột 操作).
+  - Pagination với lựa chọn page-size (10/20/30/40/50/All) và Prev/Next cùng hiển thị Page X/Y.
+
+- File đã chỉnh sửa:
+  - [src/app/(private)/masterdata/page.tsx](src/app/(private)/masterdata/page.tsx#L1) — thay `renderTable` bằng `RenderTable` và cập nhật tất cả các chỗ gọi tương ứng.
+  - (Đã có thay đổi trước đó cho điều hướng) [src/components/app-sidebar.tsx](src/components/app-sidebar.tsx#L1) và [src/components/command-search.tsx](src/components/command-search.tsx#L1) để thêm entry `/masterdata`.
+
+Ghi chú kỹ thuật ngắn:
+
+- Cách triển khai hiện tại dùng xử lý client-side (useState/useMemo) cho sort, column visibility và pagination để giữ thay đổi nhẹ nhàng và dễ áp dụng cho nhiều tab.
+- Export hiện chưa được tái cấu hình tự động để áp dụng `visibleColumns` và `filteredRows` — tôi có thể nối thêm để export chỉ các cột/dòng đang hiển thị khi bạn muốn.
+- Nếu muốn tính năng sắp xếp/ẩn-cột/phan-trang mạnh mẽ hơn (ví dụ: multi-sort, server-side paging, persist column state), đề xuất refactor sang TanStack Table (`@tanstack/react-table`) dựa trên ví dụ trong `src/modules/item-code-list/components`.
+
+Nếu bạn muốn, tôi sẽ bổ sung phần hướng dẫn kiểm thử cho những thay đổi UI này vào `Docs/masterdata.md` hoặc tạo `Docs/masterdata-test-plan.md` riêng.
+
 La admin hoac nhan vien duoc phan quyen, toi muon xoa master data khong con dung, de danh muc khong bi rac.
 
 Acceptance criteria:
