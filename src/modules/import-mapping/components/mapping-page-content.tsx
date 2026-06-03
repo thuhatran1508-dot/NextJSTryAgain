@@ -436,7 +436,7 @@ export function MappingPageContent() {
 
             <section className="min-w-0 rounded-md border bg-background">
               {draft ? (
-                <div className="flex flex-col gap-4 p-4">
+                <div className={detailsOpen ? "flex flex-col gap-4 p-4" : "hidden"}>
                   <div className="flex items-center justify-between gap-2 border-b pb-3">
                     <div className="min-w-0">
                       <div className="truncate text-sm font-medium">{draft.name}</div>
