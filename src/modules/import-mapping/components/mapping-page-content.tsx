@@ -1046,7 +1046,18 @@ function PreviewDialog({
   onOpenChange: (open: boolean) => void
   mapping: ImportMappingConfig | null
 }) {
-  const entries = mapping ? sortMappingEntries(mapping.entries) : []
+  const previewColumns = React.useMemo(() => {
+    if (!mapping) return []
+
+    return sortMappingEntries(mapping.entries).flatMap((entry) =>
+      entry.targetColumns.map((column) => ({
+        column,
+        name: entry.targetColumnName,
+        method: dataSourceLabels[entry.dataSource],
+        summary: buildEntrySummaryForColumn(entry, column),
+      }))
+    )
+  }, [mapping])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1060,24 +1071,46 @@ function PreviewDialog({
             <div>明細開始行: {mapping?.startDetailRow ?? "-"}</div>
             <div>有効行判定列: {mapping?.validRowColumn ?? "-"}</div>
           </div>
-          <div className="max-h-[60vh] overflow-auto rounded-md border">
-            <div className="grid min-w-[900px] grid-cols-[120px_220px_220px_1fr] bg-muted/60 font-medium">
-              <div className="p-3">CSV列</div>
-              <div className="p-3">項目名</div>
-              <div className="p-3">データ取得方法</div>
-              <div className="p-3">設定内容</div>
+          <div className="max-h-[62vh] overflow-auto rounded-md border bg-white">
+            <div
+              className="grid min-w-max"
+              style={{
+                gridTemplateColumns: `repeat(${Math.max(previewColumns.length, 1)}, minmax(112px, 140px))`,
+              }}
+            >
+              {previewColumns.map((item) => (
+                <div
+                  key={`column-${item.column}`}
+                  className="border-b border-r bg-white px-2 py-1 text-xs font-medium"
+                >
+                  {item.column}
+                </div>
+              ))}
+              {previewColumns.map((item) => (
+                <div
+                  key={`name-${item.column}`}
+                  className="min-h-16 whitespace-pre-wrap break-words border-b border-r bg-yellow-300 px-2 py-2 text-sm font-medium leading-relaxed text-black"
+                >
+                  {item.name || "-"}
+                </div>
+              ))}
+              {previewColumns.map((item) => (
+                <div
+                  key={`summary-${item.column}`}
+                  className="min-h-32 whitespace-pre-wrap break-words border-b border-r bg-white px-2 py-3 text-sm leading-relaxed"
+                >
+                  {item.summary}
+                </div>
+              ))}
+              {previewColumns.map((item) => (
+                <div
+                  key={`method-${item.column}`}
+                  className="min-h-10 whitespace-pre-wrap break-words border-r bg-muted/30 px-2 py-2 text-xs text-muted-foreground"
+                >
+                  {item.method}
+                </div>
+              ))}
             </div>
-            {entries.map((entry) => (
-              <div
-                key={entry.id}
-                className="grid min-w-[900px] grid-cols-[120px_220px_220px_1fr] border-t"
-              >
-                <div className="p-3">{entry.targetColumns.join(", ")}</div>
-                <div className="p-3">{entry.targetColumnName}</div>
-                <div className="p-3">{dataSourceLabels[entry.dataSource]}</div>
-                <div className="p-3">{buildEntrySummary(entry)}</div>
-              </div>
-            ))}
           </div>
         </div>
       </DialogContent>
@@ -1155,4 +1188,34 @@ function buildEntrySummary(entry: ImportMappingEntry) {
   }
 
   return `VLOOKUP ${entry.lookupCsvColumn || "未設定"} → ${entry.lookupCollection || "未設定"}.${entry.lookupValueField || "未設定"} → ${entry.lookupTargetColumn || targets}`
+}
+
+function buildEntrySummaryForColumn(entry: ImportMappingEntry, targetColumn: CsvColumnLetter) {
+  if (entry.dataSource === "orderFile") {
+    if (entry.orderFileMode === "fixedCell") {
+      return `固定セル ${entry.sourceCell || "未設定"} → ${targetColumn}`
+    }
+    if (entry.orderFileMode === "detailColumn") {
+      return `明細列 ${entry.sourceColumn || "未設定"}\n開始行 ${entry.startRow ?? "未設定"}\n判定列 ${entry.endDetectionColumn || "未設定"} → ${targetColumn}`
+    }
+    return `注文ファイル計算 ${entry.sourceFormula || "未設定"} → ${targetColumn}`
+  }
+
+  if (entry.dataSource === "fixedValue") {
+    return `固定値 ${entry.fixedValue || "未設定"} → ${targetColumn}`
+  }
+
+  if (entry.dataSource === "formula") {
+    return `計算式 ${entry.formula || "未設定"} → ${targetColumn}`
+  }
+
+  if (entry.dataSource === "blank") {
+    return `空欄 → ${targetColumn}`
+  }
+
+  if (entry.dataSource === "manualInput") {
+    return `後で入力 → ${targetColumn}`
+  }
+
+  return `VLOOKUP ${entry.lookupCsvColumn || "未設定"}\n${entry.lookupCollection || "未設定"}.${entry.lookupValueField || "未設定"} → ${targetColumn}`
 }
