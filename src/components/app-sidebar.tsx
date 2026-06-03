@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useSession } from "next-auth/react"
-import { Settings } from "lucide-react"
+import { Database, Settings } from "lucide-react"
 import Link from "next/link"
 import { Logo } from "@/components/logo"
 
@@ -27,6 +27,16 @@ const data = {
           title: "設定",
           url: "/settings",
           icon: Settings,
+        },
+      ],
+    },
+    {
+      label: "データ管理",
+      items: [
+        {
+          title: "マスタデータ",
+          url: "/masterdata",
+          icon: Database,
         },
       ],
     },

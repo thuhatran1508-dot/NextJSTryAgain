@@ -3,7 +3,7 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import { Command as CommandPrimitive } from "cmdk"
-import { Search, Settings, type LucideIcon } from "lucide-react"
+import { Database, Search, Settings, type LucideIcon } from "lucide-react"
 
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
@@ -110,6 +110,7 @@ export function CommandSearch({ open, onOpenChange }: CommandSearchProps) {
 
   const searchItems: SearchItem[] = [
     { title: "設定", url: "/settings", group: "メニュー", icon: Settings },
+    { title: "マスタデータ", url: "/masterdata", group: "データ管理", icon: Database },
   ]
 
   const groupedItems = searchItems.reduce((acc, item) => {
