@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react"
 import {
   ArrowDown,
   ArrowUp,
+  ChevronUp,
   Copy,
   Eye,
   History,
@@ -141,6 +142,7 @@ export function MappingPageContent() {
   const [search, setSearch] = React.useState("")
   const [previewOpen, setPreviewOpen] = React.useState(false)
   const [historyOpen, setHistoryOpen] = React.useState(false)
+  const [detailsOpen, setDetailsOpen] = React.useState(false)
 
   const selectedMapping = mappings.find((mapping) => mapping.id === selectedMappingId)
   const filteredMappings = mappings.filter((mapping) =>
@@ -160,6 +162,7 @@ export function MappingPageContent() {
       const nextSelected = nextList.find((mapping) => mapping.id === requestedId)
       setSelectedMappingId(nextSelected?.id ?? "")
       setDraft(nextSelected ? structuredClone(nextSelected) : null)
+      setDetailsOpen(Boolean(nextSelected))
       setIssues([])
     } catch {
       toast.error("マッピング一覧を読み込めませんでした。")
@@ -175,6 +178,7 @@ export function MappingPageContent() {
   React.useEffect(() => {
     if (!selectedMapping) return
     setDraft(structuredClone(selectedMapping))
+    setDetailsOpen(true)
     setIssues([])
     router.replace(`/settings?id=${selectedMapping.id}`, { scroll: false })
   }, [router, selectedMapping])
@@ -200,7 +204,24 @@ export function MappingPageContent() {
     setMappings((current) => [nextMapping, ...current])
     setSelectedMappingId(nextMapping.id)
     setDraft(nextMapping)
+    setDetailsOpen(true)
     setIssues([])
+  }
+
+  const createUniqueMappingName = (baseName: string) => {
+    const existingNames = new Set(
+      mappings.map((mapping) => mapping.name.trim().toLowerCase())
+    )
+    const normalizedBaseName = `${baseName} コピー`.trim()
+    if (!existingNames.has(normalizedBaseName.toLowerCase())) {
+      return normalizedBaseName
+    }
+
+    let index = 2
+    while (existingNames.has(`${normalizedBaseName} ${index}`.toLowerCase())) {
+      index += 1
+    }
+    return `${normalizedBaseName} ${index}`
   }
 
   const copyCurrentMapping = () => {
@@ -209,7 +230,7 @@ export function MappingPageContent() {
     const nextMapping: ImportMappingConfig = {
       ...structuredClone(draft),
       id: makeMappingId(),
-      name: `${draft.name} コピー`,
+      name: createUniqueMappingName(draft.name),
       createdAt: undefined,
       createdBy: undefined,
       updatedAt: undefined,
@@ -223,6 +244,7 @@ export function MappingPageContent() {
     setMappings((current) => [nextMapping, ...current])
     setSelectedMappingId(nextMapping.id)
     setDraft(nextMapping)
+    setDetailsOpen(true)
     setIssues([])
     toast.success("マッピングをコピーしました。保存してください。")
   }
@@ -277,7 +299,9 @@ export function MappingPageContent() {
         targetColumns: sortCsvColumns(entry.targetColumns),
       })),
     }
-    const result = validateImportMappingConfig(normalizedDraft)
+    const result = validateImportMappingConfig(normalizedDraft, {
+      existingMappings: mappings,
+    })
     setIssues(result.issues)
 
     if (!result.valid) {
@@ -311,12 +335,15 @@ export function MappingPageContent() {
     setMappings(nextMappings)
     setSelectedMappingId("")
     setDraft(null)
+    setDetailsOpen(false)
     toast.success("マッピングを削除しました。")
   }
 
   const openPreview = () => {
     if (!draft) return
-    const result = validateImportMappingConfig(draft)
+    const result = validateImportMappingConfig(draft, {
+      existingMappings: mappings,
+    })
     setIssues(result.issues)
     if (!result.valid) {
       toast.error("プレビューできません。入力内容を確認してください。")
@@ -373,7 +400,10 @@ export function MappingPageContent() {
                       <button
                         key={mapping.id}
                         type="button"
-                        onClick={() => setSelectedMappingId(mapping.id)}
+                        onClick={() => {
+                          setSelectedMappingId(mapping.id)
+                          setDetailsOpen(true)
+                        }}
                         className={[
                           "rounded-md border px-3 py-2 text-left text-sm transition-colors",
                           selectedMappingId === mapping.id
@@ -406,6 +436,32 @@ export function MappingPageContent() {
             <section className="min-w-0 rounded-md border bg-background">
               {draft ? (
                 <div className="flex flex-col gap-4 p-4">
+                  <div className="flex items-center justify-between gap-2 border-b pb-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium">{draft.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {detailsOpen
+                          ? "詳細を表示しています。"
+                          : "詳細は閉じています。"}
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setDetailsOpen((open) => !open)}
+                    >
+                      <ChevronUp
+                        className={[
+                          "size-4 transition-transform",
+                          detailsOpen ? "" : "rotate-180",
+                        ].join(" ")}
+                      />
+                      {detailsOpen ? "詳細を閉じる" : "詳細を表示"}
+                    </Button>
+                  </div>
+                  {detailsOpen ? (
+                    <>
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div className="grid min-w-0 flex-1 gap-3 md:grid-cols-2">
                       <Field label="マッピング名" messages={getIssueMessages(issues, "name")}>
@@ -538,6 +594,8 @@ export function MappingPageContent() {
                       ))}
                     </div>
                   </div>
+                    </>
+                  ) : null}
                 </div>
               ) : (
                 <div className="flex min-h-80 flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground">

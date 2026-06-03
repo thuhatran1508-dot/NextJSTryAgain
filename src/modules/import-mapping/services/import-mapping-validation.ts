@@ -199,7 +199,12 @@ function validateEntry(entry: ImportMappingEntry, index: number) {
   return issues
 }
 
-export function validateImportMappingConfig(mapping: ImportMappingConfig) {
+export function validateImportMappingConfig(
+  mapping: ImportMappingConfig,
+  options: {
+    existingMappings?: ImportMappingConfig[]
+  } = {}
+) {
   const issues: MappingValidationIssue[] = []
 
   if (!hasValue(mapping.name)) {
@@ -207,6 +212,22 @@ export function validateImportMappingConfig(mapping: ImportMappingConfig) {
       field: "name",
       message: "マッピング名を入力してください。",
     })
+  } else {
+    const duplicated = options.existingMappings?.some((item) => {
+      return (
+        item.id !== mapping.id &&
+        !item.deleted &&
+        String(item.name ?? "").trim().toLowerCase() ===
+          String(mapping.name ?? "").trim().toLowerCase()
+      )
+    })
+
+    if (duplicated) {
+      addIssue(issues, {
+        field: "name",
+        message: "同じマッピング名は使用できません。",
+      })
+    }
   }
 
   if (mapping.startDetailRow === undefined || mapping.startDetailRow === null) {
