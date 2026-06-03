@@ -308,7 +308,7 @@ export function MappingPageContent() {
         </div>
 
         <TabsContent value="list" className="mt-0">
-          <div className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
+          <div className="grid gap-4 2xl:grid-cols-[320px_minmax(0,1fr)]">
             <aside className="rounded-md border bg-background p-3">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div className="text-sm font-medium">マッピング一覧</div>
@@ -369,7 +369,7 @@ export function MappingPageContent() {
               {draft ? (
                 <div className="flex flex-col gap-4 p-4">
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="grid flex-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <div className="grid min-w-0 flex-1 gap-3 md:grid-cols-2">
                       <Field label="マッピング名" messages={getIssueMessages(issues, "name")}>
                         <Input
                           value={draft.name}
@@ -405,7 +405,7 @@ export function MappingPageContent() {
                         />
                         <Label className="text-sm">有効</Label>
                       </div>
-                      <div className="md:col-span-2 xl:col-span-4">
+                      <div className="md:col-span-2">
                         <Field label="説明">
                           <Textarea
                             value={draft.description ?? ""}
@@ -471,7 +471,7 @@ export function MappingPageContent() {
                     </div>
                   ) : null}
 
-                  <div className="overflow-x-auto">
+                  <div className="w-full overflow-x-auto">
                     <div className="min-w-[1180px] divide-y rounded-md border">
                       <div className="grid grid-cols-[150px_190px_220px_minmax(0,1fr)_120px] bg-muted/60 text-sm font-medium">
                         <div className="p-3">CSV列</div>
@@ -826,8 +826,10 @@ function Field({
   children: React.ReactNode
 }) {
   return (
-    <div className="grid gap-1.5">
-      {label ? <Label className="text-xs text-muted-foreground">{label}</Label> : null}
+    <div className="grid min-w-0 gap-1.5">
+      {label ? (
+        <Label className="whitespace-nowrap text-xs text-muted-foreground">{label}</Label>
+      ) : null}
       {children}
       {messages.map((message) => (
         <p key={message} className="text-xs text-destructive">

@@ -456,7 +456,7 @@ function RenderTable({ headers, rows, actionCells = [], emptyStateText = "デー
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1">
-            <span className="text-sm text-muted-foreground">Columns:</span>
+            <span className="text-sm text-muted-foreground">表示列:</span>
             {headers.map((h) => (
               <label key={h} className="inline-flex items-center text-sm ml-2">
                 <input type="checkbox" className="mr-1" checked={!!visibleColumns[h]} onChange={() => toggleColumn(h)} />
@@ -472,14 +472,14 @@ function RenderTable({ headers, rows, actionCells = [], emptyStateText = "デー
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-sm text-muted-foreground">Rows:</label>
+          <label className="text-sm text-muted-foreground">表示件数:</label>
           <select value={pageSize} onChange={(e) => { setPageSize(e.target.value === "all" ? "all" : Number(e.target.value)); setPage(1) }} className="border px-2 py-1 rounded">
             {pageOptions.map((n) => (
-              <option key={n} value={n}>{n} / page</option>
+              <option key={n} value={n}>{n} 件</option>
             ))}
-            <option value="all">All</option>
+            <option value="all">すべて</option>
           </select>
-          <div className="text-sm text-muted-foreground">{totalRows} rows</div>
+          <div className="text-sm text-muted-foreground">{totalRows} 件</div>
         </div>
       </div>
 
@@ -532,11 +532,13 @@ function RenderTable({ headers, rows, actionCells = [], emptyStateText = "デー
 
       <div className="mt-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <button className="btn" onClick={() => setPage((p) => Math.max(1, p - 1))}>Prev</button>
-          <span className="text-sm">Page {page} / {totalPages}</span>
-          <button className="btn" onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>Next</button>
+          <button className="btn" onClick={() => setPage((p) => Math.max(1, p - 1))}>前へ</button>
+          <span className="text-sm">{page} / {totalPages} ページ</span>
+          <button className="btn" onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>次へ</button>
         </div>
-        <div className="text-sm">Showing {pageSize === "all" ? totalRows : Math.min(pageSize as number, totalRows)} rows</div>
+        <div className="text-sm">
+          {pageSize === "all" ? totalRows : Math.min(pageSize as number, totalRows)} 件を表示
+        </div>
       </div>
     </div>
   )
