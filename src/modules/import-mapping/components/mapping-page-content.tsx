@@ -4,7 +4,6 @@ import * as React from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useSession } from "next-auth/react"
 import {
-  Copy,
   Eye,
   History,
   ListPlus,
@@ -207,14 +206,13 @@ export function MappingPageContent() {
     updateDraft({ entries: [...draft.entries, createEmptyMappingEntry()] })
   }
 
-  const duplicateEntry = (entry: ImportMappingEntry) => {
+  const insertEntryAfter = (entryId: string) => {
     if (!draft) return
-    updateDraft({
-      entries: [
-        ...draft.entries,
-        { ...structuredClone(entry), id: makeMappingId("entry") },
-      ],
-    })
+    const nextEntry = createEmptyMappingEntry()
+    const nextEntries = draft.entries.flatMap((entry) =>
+      entry.id === entryId ? [entry, nextEntry] : [entry]
+    )
+    updateDraft({ entries: nextEntries })
   }
 
   const deleteEntry = (entryId: string) => {
@@ -472,8 +470,8 @@ export function MappingPageContent() {
                   ) : null}
 
                   <div className="w-full overflow-x-auto">
-                    <div className="min-w-[1180px] divide-y rounded-md border">
-                      <div className="grid grid-cols-[150px_190px_220px_minmax(0,1fr)_120px] bg-muted/60 text-sm font-medium">
+                    <div className="min-w-[1240px] divide-y rounded-md border">
+                      <div className="grid grid-cols-[150px_190px_220px_minmax(0,1fr)_180px] bg-muted/60 text-sm font-medium">
                         <div className="p-3">CSV列</div>
                         <div className="p-3">項目名</div>
                         <div className="p-3">データ取得方法</div>
@@ -486,7 +484,7 @@ export function MappingPageContent() {
                           entry={entry}
                           issues={issues}
                           onChange={(patch) => updateEntry(entry.id, patch)}
-                          onDuplicate={() => duplicateEntry(entry)}
+                          onAddBelow={() => insertEntryAfter(entry.id)}
                           onDelete={() => deleteEntry(entry.id)}
                           canDelete={draft.entries.length > 1}
                         />
@@ -522,21 +520,21 @@ function MappingEntryRow({
   entry,
   issues,
   onChange,
-  onDuplicate,
+  onAddBelow,
   onDelete,
   canDelete,
 }: {
   entry: ImportMappingEntry
   issues: MappingValidationIssue[]
   onChange: (patch: Partial<ImportMappingEntry>) => void
-  onDuplicate: () => void
+  onAddBelow: () => void
   onDelete: () => void
   canDelete: boolean
 }) {
   const targetColumnsText = entry.targetColumns.join(", ")
 
   return (
-    <div className="grid grid-cols-[150px_190px_220px_minmax(0,1fr)_120px] text-sm">
+    <div className="grid grid-cols-[150px_190px_220px_minmax(0,1fr)_180px] text-sm">
       <div className="p-3">
         <Field messages={getIssueMessages(issues, "targetColumns", entry.id)}>
           <Input
@@ -584,19 +582,20 @@ function MappingEntryRow({
       <div className="p-3">
         <EntryDetailFields entry={entry} issues={issues} onChange={onChange} />
       </div>
-      <div className="flex justify-end gap-1 p-3">
-        <Button type="button" size="icon" variant="ghost" onClick={onDuplicate} aria-label="複製">
-          <Copy className="size-4" />
+      <div className="flex flex-col items-stretch gap-2 p-3">
+        <Button type="button" size="sm" variant="outline" onClick={onAddBelow}>
+          <Plus className="size-4" />
+          下に追加
         </Button>
         <Button
           type="button"
-          size="icon"
-          variant="ghost"
+          size="sm"
+          variant="destructive"
           onClick={onDelete}
           disabled={!canDelete}
-          aria-label="削除"
         >
           <Trash2 className="size-4" />
+          削除
         </Button>
       </div>
     </div>
