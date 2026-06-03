@@ -46,6 +46,8 @@ export type ImportMappingDataSource =
   | "fixedValue"
   | "masterLookup"
   | "formula"
+  | "blank"
+  | "manualInput"
 
 export type ImportMappingOrderFileMode =
   | "fixedCell"

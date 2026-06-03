@@ -81,6 +81,8 @@ const dataSourceLabels: Record<ImportMappingDataSource, string> = {
   fixedValue: "固定値",
   masterLookup: "マスタデータ参照",
   formula: "計算式",
+  blank: "空欄",
+  manualInput: "後で入力",
 }
 
 const orderFileModeLabels: Record<ImportMappingOrderFileMode, string> = {
@@ -1142,6 +1144,14 @@ function buildEntrySummary(entry: ImportMappingEntry) {
 
   if (entry.dataSource === "formula") {
     return `計算式 ${entry.formula || "未設定"} → ${targets}`
+  }
+
+  if (entry.dataSource === "blank") {
+    return `空欄 → ${targets}`
+  }
+
+  if (entry.dataSource === "manualInput") {
+    return `後で入力 → ${targets}`
   }
 
   return `VLOOKUP ${entry.lookupCsvColumn || "未設定"} → ${entry.lookupCollection || "未設定"}.${entry.lookupValueField || "未設定"} → ${entry.lookupTargetColumn || targets}`
