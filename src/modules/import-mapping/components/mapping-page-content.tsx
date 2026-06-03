@@ -157,8 +157,7 @@ export function MappingPageContent() {
       const nextList = list.length ? list : [createDefaultImportMappingConfig()]
       setMappings(nextList)
       const requestedId = searchParams.get("id")
-      const nextSelected =
-        nextList.find((mapping) => mapping.id === requestedId) ?? nextList[0]
+      const nextSelected = nextList.find((mapping) => mapping.id === requestedId)
       setSelectedMappingId(nextSelected?.id ?? "")
       setDraft(nextSelected ? structuredClone(nextSelected) : null)
       setIssues([])
@@ -310,9 +309,8 @@ export function MappingPageContent() {
     await mappingConfigRepository.softDelete(draft.id, userEmail)
     const nextMappings = mappings.filter((mapping) => mapping.id !== draft.id)
     setMappings(nextMappings)
-    const nextSelected = nextMappings[0]
-    setSelectedMappingId(nextSelected?.id ?? "")
-    setDraft(nextSelected ? structuredClone(nextSelected) : null)
+    setSelectedMappingId("")
+    setDraft(null)
     toast.success("マッピングを削除しました。")
   }
 
@@ -343,7 +341,7 @@ export function MappingPageContent() {
       <Tabs value="list" className="gap-4">
         <div className="overflow-x-auto pb-1">
           <TabsList className="min-w-max">
-            <TabsTrigger value="list">マッピング一覧</TabsTrigger>
+            <TabsTrigger value="list">マッピング表</TabsTrigger>
           </TabsList>
         </div>
 
@@ -351,7 +349,7 @@ export function MappingPageContent() {
           <div className="grid gap-4 2xl:grid-cols-[320px_minmax(0,1fr)]">
             <aside className="rounded-md border bg-background p-3">
               <div className="mb-3 flex items-center justify-between gap-2">
-                <div className="text-sm font-medium">マッピング一覧</div>
+                <div className="text-sm font-medium">マッピング表</div>
                 <Button type="button" size="sm" onClick={addMapping}>
                   <Plus className="size-4" />
                   新規
@@ -542,8 +540,13 @@ export function MappingPageContent() {
                   </div>
                 </div>
               ) : (
-                <div className="flex min-h-80 items-center justify-center text-sm text-muted-foreground">
-                  マッピングがまだ登録されていません。
+                <div className="flex min-h-80 flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground">
+                  <div className="text-base font-medium text-foreground">
+                    マッピングを選択してください。
+                  </div>
+                  <div>
+                    マッピング表から編集するマッピングをクリックしてください。
+                  </div>
                 </div>
               )}
             </section>
