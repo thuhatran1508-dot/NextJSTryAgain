@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react"
 import {
   ArrowDown,
   ArrowUp,
+  Copy,
   Eye,
   History,
   ListPlus,
@@ -201,6 +202,30 @@ export function MappingPageContent() {
     setSelectedMappingId(nextMapping.id)
     setDraft(nextMapping)
     setIssues([])
+  }
+
+  const copyCurrentMapping = () => {
+    if (!draft) return
+
+    const nextMapping: ImportMappingConfig = {
+      ...structuredClone(draft),
+      id: makeMappingId(),
+      name: `${draft.name} コピー`,
+      createdAt: undefined,
+      createdBy: undefined,
+      updatedAt: undefined,
+      updatedBy: undefined,
+      entries: draft.entries.map((entry) => ({
+        ...structuredClone(entry),
+        id: makeMappingId("entry"),
+      })),
+    }
+
+    setMappings((current) => [nextMapping, ...current])
+    setSelectedMappingId(nextMapping.id)
+    setDraft(nextMapping)
+    setIssues([])
+    toast.success("マッピングをコピーしました。保存してください。")
   }
 
   const addEntry = () => {
@@ -444,6 +469,10 @@ export function MappingPageContent() {
                       <Button type="button" variant="outline" onClick={openPreview}>
                         <Eye className="size-4" />
                         プレビュー
+                      </Button>
+                      <Button type="button" variant="outline" onClick={copyCurrentMapping}>
+                        <Copy className="size-4" />
+                        コピー
                       </Button>
                       <Button type="button" variant="outline" onClick={openHistory}>
                         <History className="size-4" />
