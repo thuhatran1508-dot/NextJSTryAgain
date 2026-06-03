@@ -3,11 +3,13 @@
 import * as React from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useSession } from "next-auth/react"
+import * as XLSX from "xlsx"
 import {
   ArrowDown,
   ArrowUp,
   ChevronUp,
   Copy,
+  Download,
   Eye,
   History,
   ListPlus,
@@ -1059,11 +1061,54 @@ function PreviewDialog({
     )
   }, [mapping])
 
+  const downloadPreviewExcel = () => {
+    if (!mapping || !previewColumns.length) return
+
+    const worksheet = XLSX.utils.aoa_to_sheet([
+      previewColumns.map((item) => item.column),
+      previewColumns.map((item) => item.name || ""),
+      previewColumns.map((item) => item.summary),
+      previewColumns.map((item) => item.method),
+    ])
+
+    const range = XLSX.utils.decode_range(worksheet["!ref"] ?? "A1:A1")
+    for (let columnIndex = range.s.c; columnIndex <= range.e.c; columnIndex += 1) {
+      const headerCell = XLSX.utils.encode_cell({ r: 1, c: columnIndex })
+      if (worksheet[headerCell]) {
+        worksheet[headerCell].s = {
+          fill: { fgColor: { rgb: "FFFF00" } },
+          font: { bold: true },
+          alignment: { wrapText: true, vertical: "center" },
+        }
+      }
+    }
+
+    worksheet["!cols"] = previewColumns.map(() => ({ wch: 18 }))
+    worksheet["!rows"] = [{ hpt: 18 }, { hpt: 44 }, { hpt: 88 }, { hpt: 32 }]
+
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, "プレビュー")
+    const safeName = mapping.name.replace(/[\\/:*?"<>|]/g, "_")
+    XLSX.writeFile(workbook, `${safeName || "mapping"}-preview.xlsx`)
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl">
         <DialogHeader>
-          <DialogTitle>プレビュー</DialogTitle>
+          <div className="flex items-center justify-between gap-3">
+            <DialogTitle>プレビュー</DialogTitle>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={downloadPreviewExcel}
+              disabled={!mapping || !previewColumns.length}
+            >
+              <Download className="size-4" />
+              Excelダウンロード
+            </Button>
+          </div>
         </DialogHeader>
         <div className="grid gap-3 text-sm">
           <div className="grid gap-2 rounded-md border p-3 md:grid-cols-3">
