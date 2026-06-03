@@ -7,6 +7,7 @@ export const FIRESTORE_COLLECTIONS = {
   fixedValueConfigs: "fixedValueConfigs",
   fixedValueConfigHistory: "fixedValueConfigHistory",
   importMappingConfigs: "importMappingConfigs",
+  importMappingConfigHistory: "importMappingConfigHistory",
   importBatches: "importBatches",
   importBatchRows: "importBatchRows",
   validationIssues: "validationIssues",
@@ -39,6 +40,21 @@ export type ImportMappingSourceType =
   | "detailColumn"
   | "expression"
   | "generated"
+
+export type ImportMappingDataSource =
+  | "orderFile"
+  | "fixedValue"
+  | "masterLookup"
+  | "formula"
+
+export type ImportMappingOrderFileMode =
+  | "fixedCell"
+  | "detailColumn"
+  | "sourceFormula"
+
+export type ImportMappingDataFormat = "original" | "number" | "date"
+
+export type ImportMappingScope = "sheet" | "detail" | "system"
 
 export type CsvColumnLetter =
   | "A"
@@ -170,23 +186,53 @@ export interface FixedValueConfigHistory extends AuditFields {
   changedBy?: string
 }
 
-export interface ImportMappingConfig extends AuditFields {
+export interface ImportMappingEntry {
   id: string
-  sourceType: ImportMappingSourceType
+  targetColumns: CsvColumnLetter[]
+  targetColumnName: string
+  dataSource: ImportMappingDataSource
+  orderFileMode?: ImportMappingOrderFileMode
   sourceCell?: string
   sourceColumn?: string
-  expression?: string
-  generatedType?: "lineNumber"
-  targetColumns: CsvColumnLetter[]
-  itemName: string
-  level: "sheet" | "detail" | "system"
-  valueType: "string" | "number" | "date"
-  outputFormat?: "yyyymmdd"
-  description: string
+  startRow?: number
+  endDetectionColumn?: string
+  sourceDataKind?: "number" | "array"
+  sourcePosition?: string
+  sourceFormula?: string
+  fixedValue?: string
+  formula?: string
+  lookupCsvColumn?: CsvColumnLetter
+  lookupCollection?: MissingMasterDataType
+  lookupKeyField?: string
+  lookupValueField?: string
+  lookupTargetColumn?: CsvColumnLetter
+  format: ImportMappingDataFormat
+  scope: ImportMappingScope
+  note?: string
+}
+
+export interface ImportMappingConfig extends AuditFields {
+  id: string
+  name: string
+  description?: string
+  startDetailRow: number
+  validRowColumn: string
+  entries: ImportMappingEntry[]
   customerRule?: CustomerRule | "ALL"
-  startDetailRow?: number
-  validRowColumn?: string
+  formType?: string
   active: boolean
+  deleted?: boolean
+  version?: number
+}
+
+export interface ImportMappingConfigHistory extends AuditFields {
+  id?: string
+  mappingId: string
+  action: "create" | "update" | "delete"
+  changedAt: unknown
+  changedBy?: string
+  oldValue?: ImportMappingConfig | null
+  newValue?: ImportMappingConfig | null
 }
 
 export interface ImportBatchSourceFile {

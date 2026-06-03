@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useSession } from "next-auth/react"
-import { Database, Settings } from "lucide-react"
+import { Database, FileSpreadsheet, Settings } from "lucide-react"
 import Link from "next/link"
 import { Logo } from "@/components/logo"
 
@@ -24,19 +24,19 @@ const data = {
       label: "メニュー",
       items: [
         {
+          title: "マスタデータ",
+          url: "/masterdata",
+          icon: Database,
+        },
+        {
           title: "設定",
           url: "/settings",
           icon: Settings,
         },
-      ],
-    },
-    {
-      label: "データ管理",
-      items: [
         {
-          title: "マスタデータ",
-          url: "/masterdata",
-          icon: Database,
+          title: "CSV作成",
+          url: "/csv-create",
+          icon: FileSpreadsheet,
         },
       ],
     },

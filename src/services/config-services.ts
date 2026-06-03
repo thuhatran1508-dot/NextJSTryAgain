@@ -6,6 +6,7 @@ import {
   type FixedValueConfig,
   type FixedValueConfigHistory,
   type ImportMappingConfig,
+  type ImportMappingConfigHistory,
 } from "@/types/firestore-models"
 
 export const fixedValueConfigService = createFirestoreCrudService<FixedValueConfig>(
@@ -31,12 +32,24 @@ export const importMappingConfigService = createFirestoreCrudService<ImportMappi
   FIRESTORE_COLLECTIONS.importMappingConfigs,
   {
     getDocumentId: (record) => record.id,
-    orderByField: "id",
+    orderByField: "name",
   }
 )
+
+export const importMappingConfigHistoryService =
+  createFirestoreCrudService<ImportMappingConfigHistory>(
+    FIRESTORE_COLLECTIONS.importMappingConfigHistory,
+    {
+      getDocumentId: (record) =>
+        record.id ||
+        `${record.mappingId}_${record.action}_${Date.now()}`,
+      orderByField: "changedAt",
+    }
+  )
 
 export const configServices = {
   fixedValueConfigs: fixedValueConfigService,
   fixedValueConfigHistory: fixedValueConfigHistoryService,
   importMappingConfigs: importMappingConfigService,
+  importMappingConfigHistory: importMappingConfigHistoryService,
 }
