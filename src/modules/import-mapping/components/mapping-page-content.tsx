@@ -4,6 +4,8 @@ import * as React from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useSession } from "next-auth/react"
 import {
+  ArrowDown,
+  ArrowUp,
   Eye,
   History,
   ListPlus,
@@ -218,6 +220,21 @@ export function MappingPageContent() {
   const deleteEntry = (entryId: string) => {
     if (!draft) return
     updateDraft({ entries: draft.entries.filter((entry) => entry.id !== entryId) })
+  }
+
+  const moveEntry = (entryId: string, direction: "up" | "down") => {
+    if (!draft) return
+    const currentIndex = draft.entries.findIndex((entry) => entry.id === entryId)
+    if (currentIndex < 0) return
+
+    const nextIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1
+    if (nextIndex < 0 || nextIndex >= draft.entries.length) return
+
+    const nextEntries = [...draft.entries]
+    const currentEntry = nextEntries[currentIndex]
+    nextEntries[currentIndex] = nextEntries[nextIndex]
+    nextEntries[nextIndex] = currentEntry
+    updateDraft({ entries: nextEntries })
   }
 
   const sortEntries = () => {
@@ -470,22 +487,25 @@ export function MappingPageContent() {
                   ) : null}
 
                   <div className="w-full overflow-x-auto">
-                    <div className="min-w-[1240px] divide-y rounded-md border">
-                      <div className="grid grid-cols-[150px_190px_220px_minmax(0,1fr)_180px] bg-muted/60 text-sm font-medium">
+                    <div className="min-w-[980px] divide-y rounded-md border">
+                      <div className="grid grid-cols-[140px_190px_220px_minmax(0,1fr)] bg-muted/60 text-sm font-medium">
                         <div className="p-3">CSV列</div>
                         <div className="p-3">項目名</div>
                         <div className="p-3">データ取得方法</div>
                         <div className="p-3">設定内容</div>
-                        <div className="p-3 text-right">操作</div>
                       </div>
-                      {draft.entries.map((entry) => (
+                      {draft.entries.map((entry, index) => (
                         <MappingEntryRow
                           key={entry.id}
                           entry={entry}
                           issues={issues}
                           onChange={(patch) => updateEntry(entry.id, patch)}
                           onAddBelow={() => insertEntryAfter(entry.id)}
+                          onMoveUp={() => moveEntry(entry.id, "up")}
+                          onMoveDown={() => moveEntry(entry.id, "down")}
                           onDelete={() => deleteEntry(entry.id)}
+                          canMoveUp={index > 0}
+                          canMoveDown={index < draft.entries.length - 1}
                           canDelete={draft.entries.length > 1}
                         />
                       ))}
@@ -521,20 +541,28 @@ function MappingEntryRow({
   issues,
   onChange,
   onAddBelow,
+  onMoveUp,
+  onMoveDown,
   onDelete,
+  canMoveUp,
+  canMoveDown,
   canDelete,
 }: {
   entry: ImportMappingEntry
   issues: MappingValidationIssue[]
   onChange: (patch: Partial<ImportMappingEntry>) => void
   onAddBelow: () => void
+  onMoveUp: () => void
+  onMoveDown: () => void
   onDelete: () => void
+  canMoveUp: boolean
+  canMoveDown: boolean
   canDelete: boolean
 }) {
   const targetColumnsText = entry.targetColumns.join(", ")
 
   return (
-    <div className="grid grid-cols-[150px_190px_220px_minmax(0,1fr)_180px] text-sm">
+    <div className="grid grid-cols-[140px_190px_220px_minmax(0,1fr)] text-sm">
       <div className="p-3">
         <Field messages={getIssueMessages(issues, "targetColumns", entry.id)}>
           <Input
@@ -582,10 +610,18 @@ function MappingEntryRow({
       <div className="p-3">
         <EntryDetailFields entry={entry} issues={issues} onChange={onChange} />
       </div>
-      <div className="flex flex-col items-stretch gap-2 p-3">
+      <div className="col-span-3 flex flex-wrap items-center gap-2 p-3 pt-0">
         <Button type="button" size="sm" variant="outline" onClick={onAddBelow}>
           <Plus className="size-4" />
           下に追加
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={onMoveUp} disabled={!canMoveUp}>
+          <ArrowUp className="size-4" />
+          上へ
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={onMoveDown} disabled={!canMoveDown}>
+          <ArrowDown className="size-4" />
+          下へ
         </Button>
         <Button
           type="button"
