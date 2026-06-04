@@ -56,6 +56,12 @@ export type ImportMappingOrderFileMode =
 
 export type ImportMappingDataFormat = "original" | "number" | "date"
 
+export type ImportMappingFormatCondition =
+  | ImportMappingDataFormat
+  | "left32"
+  | "left25"
+  | "alphanumericOnly"
+
 export type ImportMappingScope = "sheet" | "detail" | "system"
 
 export type CsvColumnLetter =
@@ -209,6 +215,7 @@ export interface ImportMappingEntry {
   lookupValueField?: string
   lookupTargetColumn?: CsvColumnLetter
   format: ImportMappingDataFormat
+  formatConditions?: ImportMappingFormatCondition[]
   scope: ImportMappingScope
   note?: string
 }

@@ -58,6 +58,7 @@ import type {
   ImportMappingDataFormat,
   ImportMappingDataSource,
   ImportMappingEntry,
+  ImportMappingFormatCondition,
   ImportMappingOrderFileMode,
   MissingMasterDataType,
 } from "@/types/firestore-models"
@@ -93,11 +94,27 @@ const orderFileModeLabels: Record<ImportMappingOrderFileMode, string> = {
   sourceFormula: "注文ファイル計算",
 }
 
-const formatLabels: Record<ImportMappingDataFormat, string> = {
+const formatConditionLabels: Record<ImportMappingFormatCondition, string> = {
   original: "元の形式を保持",
   number: "Number 00,000.00",
   date: "Date yyyymmdd",
+  left32: "左から32文字（空白を含む）",
+  left25: "左から25文字（空白を含む）",
+  alphanumericOnly: "英数字のみ",
 }
+
+const formatConditionDescriptions: Record<ImportMappingFormatCondition, string> = {
+  original: "入力値の形式をそのまま保持します。",
+  number: "数値を00,000.00形式で扱います。",
+  date: "日付をyyyymmdd形式で扱います。",
+  left32: "左から32文字だけ取得します。空白文字も1文字として数えます。",
+  left25: "左から25文字だけ取得します。空白文字も1文字として数えます。",
+  alphanumericOnly: "A-Z、a-z、0-9だけを残し、記号やひらがな、カタカナ、漢字などは除外します。",
+}
+
+const formatConditionOptions = Object.keys(
+  formatConditionLabels
+) as ImportMappingFormatCondition[]
 
 function createNewMapping(): ImportMappingConfig {
   return {
@@ -148,6 +165,7 @@ export function MappingPageContent() {
   const [previewOpen, setPreviewOpen] = React.useState(false)
   const [historyOpen, setHistoryOpen] = React.useState(false)
   const [detailsOpen, setDetailsOpen] = React.useState(false)
+  const [activeTab, setActiveTab] = React.useState("list")
 
   const selectedMapping = mappings.find((mapping) => mapping.id === selectedMappingId)
   const filteredMappings = mappings.filter((mapping) =>
@@ -370,10 +388,11 @@ export function MappingPageContent() {
         <h1 className="text-2xl font-semibold tracking-tight">設定</h1>
       </div>
 
-      <Tabs value="list" className="gap-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="gap-4">
         <div className="overflow-x-auto pb-1">
           <TabsList className="min-w-max">
             <TabsTrigger value="list">マッピング表</TabsTrigger>
+            <TabsTrigger value="format">フォーマット</TabsTrigger>
           </TabsList>
         </div>
 
@@ -615,6 +634,10 @@ export function MappingPageContent() {
             </section>
           </div>
         </TabsContent>
+
+        <TabsContent value="format" className="mt-0">
+          <FormatConditionsTab />
+        </TabsContent>
       </Tabs>
 
       <PreviewDialog
@@ -768,7 +791,7 @@ function EntryDetailFields({
                 </SelectContent>
               </Select>
             </Field>
-            <FormatSelect value={entry.format} onChange={(format) => onChange({ format })} />
+            <FormatConditionsEditor entry={entry} onChange={onChange} />
           </div>
 
           {entry.orderFileMode === "fixedCell" ? (
@@ -862,7 +885,7 @@ function EntryDetailFields({
               placeholder="0"
             />
           </Field>
-          <FormatSelect value={entry.format} onChange={(format) => onChange({ format })} />
+          <FormatConditionsEditor entry={entry} onChange={onChange} />
         </div>
       ) : null}
 
@@ -875,7 +898,7 @@ function EntryDetailFields({
               placeholder="=A*C"
             />
           </Field>
-          <FormatSelect value={entry.format} onChange={(format) => onChange({ format })} />
+          <FormatConditionsEditor entry={entry} onChange={onChange} />
         </div>
       ) : null}
 
@@ -932,7 +955,7 @@ function EntryDetailFields({
               onChange={(lookupTargetColumn) => onChange({ lookupTargetColumn })}
             />
           </Field>
-          <FormatSelect value={entry.format} onChange={(format) => onChange({ format })} />
+          <FormatConditionsEditor entry={entry} onChange={onChange} />
         </div>
       ) : null}
 
@@ -942,6 +965,29 @@ function EntryDetailFields({
         className="min-h-12 resize-none bg-muted/40 text-xs text-muted-foreground"
         aria-label="設定内容の概要"
       />
+    </div>
+  )
+}
+
+function FormatConditionsTab() {
+  return (
+    <div className="rounded-md border bg-background">
+      <div className="border-b p-4">
+        <div className="text-sm font-medium">フォーマット条件</div>
+      </div>
+      <div className="divide-y">
+        {formatConditionOptions.map((condition) => (
+          <div
+            key={condition}
+            className="grid gap-2 p-4 text-sm md:grid-cols-[240px_minmax(0,1fr)]"
+          >
+            <div className="font-medium">{formatConditionLabels[condition]}</div>
+            <div className="text-muted-foreground">
+              {formatConditionDescriptions[condition]}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -970,27 +1016,88 @@ function Field({
   )
 }
 
-function FormatSelect({
-  value,
+function getFormatConditions(entry: ImportMappingEntry) {
+  return entry.formatConditions?.length ? entry.formatConditions : [entry.format]
+}
+
+function getPrimaryFormat(
+  conditions: ImportMappingFormatCondition[]
+): ImportMappingDataFormat {
+  const primary = conditions.find(
+    (condition): condition is ImportMappingDataFormat =>
+      condition === "original" || condition === "number" || condition === "date"
+  )
+  return primary ?? "original"
+}
+
+function FormatConditionsEditor({
+  entry,
   onChange,
 }: {
-  value: ImportMappingDataFormat
-  onChange: (value: ImportMappingDataFormat) => void
+  entry: ImportMappingEntry
+  onChange: (patch: Partial<ImportMappingEntry>) => void
 }) {
+  const conditions = getFormatConditions(entry)
+
+  const updateConditions = (nextConditions: ImportMappingFormatCondition[]) => {
+    const normalized: ImportMappingFormatCondition[] = nextConditions.length
+      ? nextConditions
+      : ["original"]
+    onChange({
+      format: getPrimaryFormat(normalized),
+      formatConditions: normalized,
+    })
+  }
+
   return (
     <Field label="入力フォーマット">
-      <Select value={value} onValueChange={(nextValue) => onChange(nextValue as ImportMappingDataFormat)}>
-        <SelectTrigger className="w-full">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {Object.entries(formatLabels).map(([format, label]) => (
-            <SelectItem key={format} value={format}>
-              {label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <div className="grid gap-2">
+        {conditions.map((condition, index) => (
+          <div key={`${condition}-${index}`} className="flex min-w-0 gap-2">
+            <Select
+              value={condition}
+              onValueChange={(nextValue) => {
+                const nextConditions = [...conditions]
+                nextConditions[index] = nextValue as ImportMappingFormatCondition
+                updateConditions(nextConditions)
+              }}
+            >
+              <SelectTrigger className="w-full min-w-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {formatConditionOptions.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {formatConditionLabels[option]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              onClick={() =>
+                updateConditions(conditions.filter((_, conditionIndex) => conditionIndex !== index))
+              }
+              disabled={conditions.length <= 1}
+              aria-label="フォーマット条件を削除"
+            >
+              <Trash2 className="size-4" />
+            </Button>
+          </div>
+        ))}
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="w-fit"
+          onClick={() => updateConditions([...conditions, "left32"])}
+        >
+          <Plus className="size-4" />
+          条件を追加
+        </Button>
+      </div>
     </Field>
   )
 }
@@ -1203,64 +1310,86 @@ function HistoryDialog({
   )
 }
 
+function buildFormatConditionSummary(entry: ImportMappingEntry) {
+  return getFormatConditions(entry)
+    .map((condition) => formatConditionLabels[condition])
+    .join(" / ")
+}
+
+function withFormatSummary(summary: string, entry: ImportMappingEntry) {
+  return `${summary}\nフォーマット: ${buildFormatConditionSummary(entry)}`
+}
+
 function buildEntrySummary(entry: ImportMappingEntry) {
   const targets = entry.targetColumns.join(", ")
 
   if (entry.dataSource === "orderFile") {
     if (entry.orderFileMode === "fixedCell") {
-      return `固定セル ${entry.sourceCell || "未設定"} → ${targets}`
+      return withFormatSummary(`固定セル ${entry.sourceCell || "未設定"} → ${targets}`, entry)
     }
     if (entry.orderFileMode === "detailColumn") {
-      return `明細列 ${entry.sourceColumn || "未設定"} / 開始行 ${entry.startRow ?? "未設定"} / 判定列 ${entry.endDetectionColumn || "未設定"} → ${targets}`
+      return withFormatSummary(
+        `明細列 ${entry.sourceColumn || "未設定"} / 開始行 ${entry.startRow ?? "未設定"} / 判定列 ${entry.endDetectionColumn || "未設定"} → ${targets}`,
+        entry
+      )
     }
-    return `注文ファイル計算 ${entry.sourceFormula || "未設定"} → ${targets}`
+    return withFormatSummary(`注文ファイル計算 ${entry.sourceFormula || "未設定"} → ${targets}`, entry)
   }
 
   if (entry.dataSource === "fixedValue") {
-    return `固定値 ${entry.fixedValue || "未設定"} → ${targets}`
+    return withFormatSummary(`固定値 ${entry.fixedValue || "未設定"} → ${targets}`, entry)
   }
 
   if (entry.dataSource === "formula") {
-    return `計算式 ${entry.formula || "未設定"} → ${targets}`
+    return withFormatSummary(`計算式 ${entry.formula || "未設定"} → ${targets}`, entry)
   }
 
   if (entry.dataSource === "blank") {
-    return `空欄 → ${targets}`
+    return withFormatSummary(`空欄 → ${targets}`, entry)
   }
 
   if (entry.dataSource === "manualInput") {
-    return `後で入力 → ${targets}`
+    return withFormatSummary(`後で入力 → ${targets}`, entry)
   }
 
-  return `VLOOKUP ${entry.lookupCsvColumn || "未設定"} → ${entry.lookupCollection || "未設定"}.${entry.lookupValueField || "未設定"} → ${entry.lookupTargetColumn || targets}`
+  return withFormatSummary(
+    `VLOOKUP ${entry.lookupCsvColumn || "未設定"} → ${entry.lookupCollection || "未設定"}.${entry.lookupValueField || "未設定"} → ${entry.lookupTargetColumn || targets}`,
+    entry
+  )
 }
 
 function buildEntrySummaryForColumn(entry: ImportMappingEntry, targetColumn: CsvColumnLetter) {
   if (entry.dataSource === "orderFile") {
     if (entry.orderFileMode === "fixedCell") {
-      return `固定セル ${entry.sourceCell || "未設定"} → ${targetColumn}`
+      return withFormatSummary(`固定セル ${entry.sourceCell || "未設定"} → ${targetColumn}`, entry)
     }
     if (entry.orderFileMode === "detailColumn") {
-      return `明細列 ${entry.sourceColumn || "未設定"}\n開始行 ${entry.startRow ?? "未設定"}\n判定列 ${entry.endDetectionColumn || "未設定"} → ${targetColumn}`
+      return withFormatSummary(
+        `明細列 ${entry.sourceColumn || "未設定"}\n開始行 ${entry.startRow ?? "未設定"}\n判定列 ${entry.endDetectionColumn || "未設定"} → ${targetColumn}`,
+        entry
+      )
     }
-    return `注文ファイル計算 ${entry.sourceFormula || "未設定"} → ${targetColumn}`
+    return withFormatSummary(`注文ファイル計算 ${entry.sourceFormula || "未設定"} → ${targetColumn}`, entry)
   }
 
   if (entry.dataSource === "fixedValue") {
-    return `固定値 ${entry.fixedValue || "未設定"} → ${targetColumn}`
+    return withFormatSummary(`固定値 ${entry.fixedValue || "未設定"} → ${targetColumn}`, entry)
   }
 
   if (entry.dataSource === "formula") {
-    return `計算式 ${entry.formula || "未設定"} → ${targetColumn}`
+    return withFormatSummary(`計算式 ${entry.formula || "未設定"} → ${targetColumn}`, entry)
   }
 
   if (entry.dataSource === "blank") {
-    return `空欄 → ${targetColumn}`
+    return withFormatSummary(`空欄 → ${targetColumn}`, entry)
   }
 
   if (entry.dataSource === "manualInput") {
-    return `後で入力 → ${targetColumn}`
+    return withFormatSummary(`後で入力 → ${targetColumn}`, entry)
   }
 
-  return `VLOOKUP ${entry.lookupCsvColumn || "未設定"}\n${entry.lookupCollection || "未設定"}.${entry.lookupValueField || "未設定"} → ${targetColumn}`
+  return withFormatSummary(
+    `VLOOKUP ${entry.lookupCsvColumn || "未設定"}\n${entry.lookupCollection || "未設定"}.${entry.lookupValueField || "未設定"} → ${targetColumn}`,
+    entry
+  )
 }

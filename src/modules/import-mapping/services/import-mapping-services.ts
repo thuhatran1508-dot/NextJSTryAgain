@@ -12,6 +12,13 @@ import {
 import { createDefaultImportMappingConfig } from "./default-import-mapping"
 import { sortMappingEntries } from "./import-mapping-types"
 
+function normalizeFormatConditions(
+  entry: ImportMappingConfig["entries"][number]
+) {
+  const conditions = entry.formatConditions?.filter(Boolean)
+  return conditions?.length ? conditions : [entry.format ?? "original"]
+}
+
 const STORAGE_KEY = "importMappingConfigs:v1"
 const HISTORY_STORAGE_KEY = "importMappingConfigHistory:v1"
 
@@ -69,6 +76,8 @@ function normalizeMapping(mapping: ImportMappingConfig): ImportMappingConfig {
     entries: sortMappingEntries(mapping.entries).map((entry) => ({
       ...entry,
       targetColumns: [...entry.targetColumns],
+      format: entry.format ?? "original",
+      formatConditions: normalizeFormatConditions(entry),
       sourceCell: entry.sourceCell?.trim().toUpperCase(),
       sourceColumn: entry.sourceColumn?.trim().toUpperCase(),
       endDetectionColumn: entry.endDetectionColumn?.trim().toUpperCase(),
