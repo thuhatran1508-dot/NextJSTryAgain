@@ -58,6 +58,7 @@ export type ImportMappingDataFormat = "original" | "number" | "date"
 
 export type ImportMappingFormatCondition =
   | ImportMappingDataFormat
+  | "numberIntegerTruncate"
   | "left32"
   | "left25"
   | "alphanumericOnly"

@@ -178,6 +178,7 @@ Moi entry can ho tro:
 - Format du lieu:
   - Giu nguyen format file goc.
   - Number `00,000.00`.
+  - Number bo phan thap phan, khong lam tron. Vi du `123.67` thanh `123`.
   - Date `yyyymmdd`.
 - Target columns co the la mot cot hoac nhieu cot.
 - Scope: sheet-level hoac detail-level.
@@ -403,6 +404,7 @@ Neu `注文ファイル計算`:
 Format:
 - `元の形式を保持`
 - `Number 00,000.00`
+- `Number 整数（小数切り捨て）`: xoa phan thap phan, khong lam tron. Vi du `123.67` thanh `123`.
 - `Date yyyymmdd`
 
 Neu `固定値`:
@@ -426,6 +428,22 @@ Yeu cau:
 - UI mobile/tablet khong vo layout, co the horizontal scroll.
 - Khong xu ly import file that o buoc nay.
 - Chay typecheck/lint neu co.
+```
+
+---
+
+### Bo Sung Cho Prompt 10: Checkbox An Cot Khi Xem Gian Luoc
+
+```text
+Khi trien khai editor cho tung dong Mapping, hay them checkbox `簡易表示で非表示`.
+
+Yeu cau:
+- Moi dong Mapping co checkbox `簡易表示で非表示`.
+- Checkbox nay luu thanh field `hideInCompactView`.
+- Mac dinh la false/khong tick.
+- Neu tick, cot CSV cua dong Mapping do se bi an khi nguoi dung chon `簡易表示` trong phan `CSV作成`.
+- Neu khong tick, cot CSV cua dong Mapping do van hien trong ca `簡易表示` va `全項目表示`.
+- Cau hinh nay chi anh huong hien thi tren man hinh, khong anh huong export CSV. Export CSV van phai xuat day du cac cot theo Mapping.
 ```
 
 ---
@@ -610,9 +628,9 @@ Can kiem tra:
 
 Khong kiem tra trong prompt nay:
 - Import file don hang that.
-- Tao batch.
+- Hien thi bang CSV that sau import.
 - Apply rule MHB/MAV.
-- Validation batch.
+- Validation du lieu CSV that.
 - Export CSV.
 
 Sau khi xong, tom tat:
@@ -640,7 +658,7 @@ Yeu cau bat buoc:
 - Khong trien khai import file don hang.
 - Khong tao Import Batch.
 - Khong apply rule MHB/MAV.
-- Khong validation batch.
+- Khong validation du lieu CSV that.
 - Khong export CSV.
 - UI cho nguoi dung Nhat phai bang tieng Nhat.
 - Admin va Operator co full quyen nhu nhau trong Mapping.

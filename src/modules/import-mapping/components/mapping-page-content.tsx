@@ -97,6 +97,7 @@ const orderFileModeLabels: Record<ImportMappingOrderFileMode, string> = {
 const formatConditionLabels: Record<ImportMappingFormatCondition, string> = {
   original: "元の形式を保持",
   number: "Number 00,000.00",
+  numberIntegerTruncate: "Number 整数（小数切り捨て）",
   date: "Date yyyymmdd",
   left32: "左から32文字（空白を含む）",
   left25: "左から25文字（空白を含む）",
@@ -106,6 +107,7 @@ const formatConditionLabels: Record<ImportMappingFormatCondition, string> = {
 const formatConditionDescriptions: Record<ImportMappingFormatCondition, string> = {
   original: "入力値の形式をそのまま保持します。",
   number: "数値を00,000.00形式で扱います。",
+  numberIntegerTruncate: "小数点以下を削除し、四捨五入しません。例：123.67 → 123。",
   date: "日付をyyyymmdd形式で扱います。",
   left32: "左から32文字だけ取得します。空白文字も1文字として数えます。",
   left25: "左から25文字だけ取得します。空白文字も1文字として数えます。",

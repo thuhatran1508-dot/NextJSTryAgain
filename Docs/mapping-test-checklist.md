@@ -17,7 +17,8 @@ Checklist này dùng để kiểm tra riêng phần 2 `設定` / `マッピン�
 - [ ] `固定値` hiển thị field nhập giá trị cố định.
 - [ ] `マスタデータ参照` hiển thị field VLOOKUP.
 - [ ] `計算式` hiển thị field công thức kiểu Excel.
-- [ ] Format có đủ `元の形式を保持`, `Number 00,000.00`, `Date yyyymmdd`.
+- [ ] Format có đủ `元の形式を保持`, `Number 00,000.00`, `Number 整数（小数切り捨て）`, `Date yyyymmdd`.
+- [ ] Format `Number 整数（小数切り捨て）` có mô tả rõ là xóa phần thập phân, không làm tròn, ví dụ `123.67` thành `123`.
 - [ ] Một source có thể nhập nhiều CSV target columns, ví dụ `E, I, J`.
 - [ ] Nút `CSV列順` sắp xếp entries theo thứ tự cột CSV.
 - [ ] `プレビュー` chỉ hiển thị cấu hình mock, không upload file thật.

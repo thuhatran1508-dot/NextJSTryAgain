@@ -4,7 +4,7 @@ Mục tiêu: mô tả các user story và use case cho chức năng "Quản lý 
 
 ## Tổng quan
 - Cho phép người dùng cấu hình cách map dữ liệu từ file Excel đơn hàng vào cột xuất CSV (`A:AO`).
-- Hỗ trợ: source types (`sheetCell`, `detailColumn`, `expression`, `generated`), nhiều cột đích cho cùng một nguồn, định dạng cột (string/number/date `yyyymmdd`), offset ngày (ví dụ `Q7 - 1`), `startDetailRow` và `validRowColumn`.
+- Hỗ trợ: source types (`sheetCell`, `detailColumn`, `expression`, `generated`), nhiều cột đích cho cùng một nguồn, định dạng cột (string/number/date `yyyymmdd`), offset ngày (ví dụ `Q7 - 1`), cấu hình ẩn cột khi xem giản lược, `startDetailRow` và `validRowColumn`.
 - `startDetailRow` và `validRowColumn` là 2 chỉ tiêu bắt buộc được quản lý trong Mapping để người dùng nhập/sửa trên giao diện. Nếu một trong hai giá trị trống hoặc không hợp lệ, hệ thống phải báo lỗi và không cho lưu mapping, import, preview hoặc apply mapping tiếp.
 - Cấu hình có thể là template chung hoặc theo khách hàng / loại form.
 - Toàn bộ UI/UX của chức năng Mapping phải dùng tiếng Nhật: tiêu đề màn hình, label field, tên nút, tooltip, alert, confirm modal, empty state, validation message và thông báo hệ thống.
@@ -46,9 +46,9 @@ Mỗi Mapping cần có:
 
 Mỗi dòng cấu hình trong Mapping nên có cấu trúc dễ hiểu:
 
-| Cột trong File CSV | Tên Cột | Cách lấy dữ liệu |
-| --- | --- | --- |
-| `C` | `分納区分` | Chọn một cách lấy dữ liệu |
+| Cột trong File CSV | Tên Cột | Cách lấy dữ liệu | Ẩn khi xem giản lược |
+| --- | --- | --- | --- |
+| `C` | `分納区分` | Chọn một cách lấy dữ liệu | Checkbox |
 
 Các lựa chọn `Cách lấy dữ liệu`:
 
@@ -63,7 +63,7 @@ Chi tiết nghiệp vụ cho `Cách lấy dữ liệu`:
   - Nếu lấy từ ô cố định: người dùng nhập vị trí ô, ví dụ `K4`, `Q5`, `Q7`.
   - Nếu lấy từ mảng dữ liệu: người dùng nhập cột nguồn, dòng bắt đầu, và điều kiện dòng kết thúc. Điều kiện kết thúc có thể là dòng cuối có giá trị ở một cột do người dùng chọn.
   - Nếu lấy bằng công thức dựa trên dữ liệu file đơn hàng: người dùng chọn dữ liệu nguồn là số hay mảng, nhập ô/cột nguồn, và nhập công thức. Giai đoạn đầu áp dụng chủ yếu cho việc lấy ngày tháng rồi cộng/trừ một số ngày.
-  - Format dữ liệu lấy vào gồm 3 lựa chọn: giữ nguyên format file gốc, dạng number `00,000.00`, hoặc dạng ngày tháng `yyyymmdd`.
+  - Format dữ liệu lấy vào gồm các lựa chọn: giữ nguyên format file gốc, dạng number `00,000.00`, dạng number bỏ phần thập phân không làm tròn, hoặc dạng ngày tháng `yyyymmdd`.
 - `Giá trị cố định`: nhập trực tiếp giá trị cố định cho cột CSV.
 - `Công thức tính toán`: nhập công thức theo kiểu Excel, ví dụ `=A*C`, nghĩa là giá trị cột hiện tại được tính từ giá trị cột A và cột C ở cùng dòng CSV.
 - `Đối chiếu / lấy dữ liệu từ master data`: mô phỏng logic giống `VLOOKUP` trong Excel. Người dùng chọn cột có dữ liệu cần tham chiếu trong file CSV, chọn collection master data, chọn field dùng để tham chiếu trong collection đã chọn, chọn field cần lấy ra trong document đã tìm thấy, và chọn cột CSV nhận kết quả.
@@ -82,8 +82,8 @@ Chi tiết nghiệp vụ cho `Cách lấy dữ liệu`:
 4. Là Admin/Operator, tôi muốn xóa mapping không dùng nữa để giảm rối loạn cấu hình.
    - Acceptance: xóa mapping sau xác nhận, có thể rollback qua lịch sử thay đổi (nếu có audit).
 
-5. Là Operator, tôi muốn chọn mapping khi tạo Import Batch để batch dùng đúng template mapping đó.
-   - Acceptance: dropdown selection mapping khi upload batch; nếu không chọn thì dùng `default`.
+5. Là Operator, tôi muốn chọn mapping khi import file Excel để màn hình tạo CSV dùng đúng template mapping đó.
+   - Acceptance: dropdown selection mapping khi upload file; nếu không chọn thì dùng `default` nếu hệ thống có Mapping mặc định.
 
 6. Là Admin/Operator, tôi muốn cấu hình một source map sang nhiều target columns (ví dụ `D4` → `E`, `I`, `J`) để hỗ trợ trường hợp cùng giá trị cần copy vào nhiều cột.
    - Acceptance: entries cho phép `targetColumns` là mảng, apply mapping map đúng các cột.
@@ -92,7 +92,7 @@ Chi tiết nghiệp vụ cho `Cách lấy dữ liệu`:
    - Acceptance: expression hỗ trợ `±N` ngày, lưu format là `date` với `offsetDays`.
 
 8. Là Admin/Operator, tôi muốn mapping phân biệt `scope` là `sheet` (giá trị cấp sheet) và `detail` (giá trị theo dòng chi tiết) để hệ thống biết cách áp dụng khi parse.
-   - Acceptance: mỗi entry có `scope` và parser áp dụng đúng khi tạo rows của batch.
+   - Acceptance: mỗi entry có `scope` và parser áp dụng đúng khi tạo bảng CSV hiện tại.
 
 9. Là Admin/Operator, tôi muốn lưu Mapping sau khi thêm/sửa/xóa dòng cấu hình để hệ thống dùng cấu hình mới cho lần xử lý sau.
    - Acceptance: nút `保存` lưu toàn bộ thay đổi trong Mapping; nếu dữ liệu thiếu hoặc sai thì báo lỗi tiếng Nhật và không lưu.
@@ -113,10 +113,13 @@ Chi tiết nghiệp vụ cho `Cách lấy dữ liệu`:
     - Acceptance: nếu chọn lấy từ ô cố định thì nhập ô nguồn; nếu chọn mảng thì nhập cột nguồn, dòng bắt đầu và điều kiện dòng kết thúc; nếu chọn công thức thì nhập nguồn dữ liệu và công thức.
 
 15. Là Admin/Operator, tôi muốn chọn format dữ liệu lấy vào để dữ liệu CSV xuất ra đúng yêu cầu.
-    - Acceptance: mỗi rule lấy từ file đơn hàng có thể chọn giữ nguyên format file gốc, number `00,000.00`, hoặc date `yyyymmdd`.
+    - Acceptance: mỗi rule lấy từ file đơn hàng có thể chọn giữ nguyên format file gốc, number `00,000.00`, number bỏ phần thập phân không làm tròn, hoặc date `yyyymmdd`.
 
 16. Là Admin/Operator, tôi muốn cấu hình đối chiếu master data giống VLOOKUP để lấy giá trị từ document master data tương ứng.
     - Acceptance: người dùng chọn cột CSV làm khóa tham chiếu, collection master data, field tham chiếu, field cần lấy ra và cột CSV nhận kết quả.
+
+17. Là Admin/Operator, tôi muốn tick vào từng dòng Mapping để quyết định cột CSV đó có bị ẩn khi người dùng chọn chế độ xem giản lược ở phần `CSV作成` hay không.
+    - Acceptance: mỗi entry có checkbox `簡易表示で非表示`; nếu được tick thì cột đó bị ẩn khi người dùng bấm `簡易表示`; nếu không tick thì cột vẫn hiển thị trong cả `簡易表示` và `全項目表示`.
 
 ## Use Cases (chi tiết)
 
@@ -164,15 +167,15 @@ Use Case UC-4: Xóa mapping
   3. Ghi audit.
 - Postconditions: mapping không xuất hiện trong danh sách.
 
-Use Case UC-5: Chọn mapping khi tạo Import Batch
+Use Case UC-5: Chọn mapping khi import Excel để tạo bảng CSV
 - Preconditions: đã có >=1 mapping.
 - Steps:
-  1. Upload file(s) trên màn hình `Import Batch`.
+  1. Upload file(s) trên màn hình `CSV作成`.
   2. Trước khi parse, chọn mapping template (dropdown) hoặc `default`.
   3. Hệ thống kiểm tra mapping đã chọn có `startDetailRow` và `validRowColumn` hợp lệ.
   4. Hệ thống sử dụng mapping đã chọn để parse sheet-level values and detail rows starting từ `startDetailRow`, chỉ lấy rows có giá trị ở `validRowColumn`.
-  5. Tạo Import Batch và rows trung gian.
-- Postconditions: batch được tạo với mapping áp dụng.
+  5. Tạo bảng CSV hiện tại theo đúng Mapping và hiển thị ngay trên màn hình.
+- Postconditions: bảng CSV hiện tại được tạo với mapping áp dụng; không cần tạo Import Batch.
 
 Acceptance criteria:
 - Nếu mapping không hợp lệ (ví dụ `source` không tồn tại), hệ thống báo warning và cho phép chỉnh mapping trước khi apply.
@@ -192,6 +195,7 @@ Acceptance criteria:
     - targetColumnName: string
     - scope: enum("sheet","detail")
     - format?: { type: "string" | "number" | "date", format?: "yyyymmdd", offsetDays?: number }
+    - hideInCompactView?: boolean
     - note?: string
   }
   - createdAt, createdBy, updatedAt, updatedBy
@@ -200,6 +204,7 @@ Acceptance criteria:
 - List view: search, filter by name, sort by name/startRow; show #entries and small preview of targets.
 - Edit view: mix of form and JSON editor. For now accept JSON paste for fast edits; later provide field-level form.
 - Entries list in UI should be sorted by target column order (A→B→C...).
+- Entries list phải có checkbox `簡易表示で非表示` cho từng dòng Mapping. Checkbox này không ảnh hưởng export CSV; nó chỉ ảnh hưởng chế độ hiển thị giản lược trong `CSV作成`.
 - Không tạo tab/menu `インポート`, `バッチ処理`, `固定値設定`, `マスタデータ`, `照明`, `エクスポート履歴` trong khu vực `設定` của Mapping.
 - Tất cả text trên UI Mapping phải là tiếng Nhật. Ví dụ: `設定`, `マッピング一覧`, `新規マッピング`, `編集`, `削除`, `保存`, `プレビュー`, `適用`, `明細開始行`, `有効行判定列`, `入力してください`, `保存しました`.
 - Không hiển thị text tiếng Việt/Anh cho tiêu đề, nút, alert, confirm, validation message hoặc empty state trong sản phẩm.
@@ -207,6 +212,7 @@ Acceptance criteria:
 
 ## Validation Rules (basic)
 - Each entry must have `sourceType`, `source`, `targetColumns` (non-empty), `targetColumnName` (non-empty), `scope`.
+- `hideInCompactView` là optional boolean; nếu không có giá trị thì mặc định là `false`.
 - `startDetailRow` is required and must be positive integer.
 - `validRowColumn` is required and must be a valid Excel column name.
 - For `expression` with date offset, `offsetDays` must be integer.
@@ -523,6 +529,7 @@ Mỗi entry nên có các field:
 | Tên cột trong file CSV | `CSV項目名` | Có | `会社コード`, `得意先コード`, `受注数` |
 | Phạm vi | `適用範囲` | Có | `シート`, `明細` |
 | Định dạng | `形式` | Không | `文字列`, `数値`, `日付` |
+| Ẩn khi xem giản lược | `簡易表示で非表示` | Không | Checkbox |
 | Ghi chú | `メモ` | Không | Ghi chú cho entry |
 
 `CSV項目名` là tên tiêu đề của cột trong file CSV, không phải ký hiệu cột. Ví dụ `出力先列` là `AI`, còn `CSV項目名` là `受注数`.
@@ -536,14 +543,16 @@ Nút thao tác entries:
 | Sao chép entry | `コピー` | Sao chép một dòng Mapping nếu cần |
 | Sắp xếp theo cột CSV | `出力先列順に並べ替え` | Sắp xếp entries theo thứ tự cột CSV |
 
+`簡易表示で非表示` là checkbox dùng để liên kết với phần 3 `CSV作成`. Nếu người dùng tick checkbox này, cột CSV của entry đó sẽ bị ẩn khi người dùng bấm `簡易表示`. Nếu không tick, cột vẫn hiển thị trong cả `簡易表示` và `全項目表示`.
+
 Ví dụ entry dễ hiểu:
 
-| 取得方法 | 取得元 | 出力先列 | CSV項目名 | 適用範囲 | 形式 |
-| --- | --- | --- | --- | --- | --- |
-| `固定セル` | `K4` | `A` | `会社コード` | `シート` | `文字列` |
-| `固定セル` | `D4` | `E,I,J` | `得意先コード` | `シート` | `文字列` |
-| `計算式` | `Q7 - 1` | `X,AO` | `出荷予定日` | `シート` | `日付` |
-| `明細列` | `R` | `AI` | `受注数` | `明細` | `数値` |
+| 取得方法 | 取得元 | 出力先列 | CSV項目名 | 適用範囲 | 形式 | 簡易表示で非表示 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `固定セル` | `K4` | `A` | `会社コード` | `シート` | `文字列` | Không tick |
+| `固定セル` | `D4` | `E,I,J` | `得意先コード` | `シート` | `文字列` | Tick nếu muốn ẩn khi xem giản lược |
+| `計算式` | `Q7 - 1` | `X,AO` | `出荷予定日` | `シート` | `日付` | Không tick |
+| `明細列` | `R` | `AI` | `受注数` | `明細` | `数値` | Không tick |
 
 ### 6. Nút trên màn hình
 
@@ -572,9 +581,10 @@ Khi người dùng bấm `保存`, hệ thống cần kiểm tra:
 8. `出力先列` có phải cột CSV hợp lệ không.
 9. `CSV項目名` có được nhập không.
 10. Nếu một entry map sang nhiều `出力先列`, `CSV項目名` phải đủ rõ để người dùng biết các cột đích đó là tiêu đề gì trong file CSV.
-11. Nếu entry là `計算式`, expression có đúng định dạng hỗ trợ không.
-12. Nếu format là ngày, có khai báo format ngày rõ không.
-13. Tên Mapping có bị trùng với Mapping khác không, nếu hệ thống không cho trùng tên.
+11. `簡易表示で非表示` nếu không có giá trị thì mặc định là không tick.
+12. Nếu entry là `計算式`, expression có đúng định dạng hỗ trợ không.
+13. Nếu format là ngày, có khai báo format ngày rõ không.
+14. Tên Mapping có bị trùng với Mapping khác không, nếu hệ thống không cho trùng tên.
 
 ### 8. Nếu hợp lệ thì hệ thống làm gì
 
@@ -676,6 +686,9 @@ Các trường hợp chặn `プレビュー` nếu preview có trên màn hình
 - [ ] `有効行判定列` không hợp lệ thì không cho lưu.
 - [ ] Không có entry thì báo `マッピング設定を1件以上追加してください。`
 - [ ] Entry thiếu `CSV項目名` thì báo `CSV項目名を入力してください。`
+- [ ] Mỗi entry có checkbox `簡易表示で非表示`.
+- [ ] Nếu tick `簡易表示で非表示`, Mapping lưu entry với `hideInCompactView=true`.
+- [ ] Nếu không tick `簡易表示で非表示`, Mapping lưu entry với `hideInCompactView=false` hoặc hiểu mặc định là `false`.
 - [ ] Dữ liệu hợp lệ thì lưu Mapping mới.
 - [ ] Lưu thành công thì báo `マッピングを作成しました。`
 - [ ] Tạo Mapping phải ghi audit history.
@@ -1079,22 +1092,22 @@ Nếu sau này cần chức năng khôi phục, có thể bổ sung nút `復元
 
 ### 7. Có cần kiểm tra Mapping đang được dùng không
 
-Trước khi xóa, hệ thống nên kiểm tra Mapping có đang được dùng bởi batch/import config nào không.
+Trước khi xóa, hệ thống nên kiểm tra Mapping có đang được dùng trong phiên xử lý import/export hiện tại không nếu app có trạng thái xử lý đang mở.
 
 Giai đoạn đầu có thể xử lý đơn giản:
 
 - Vẫn cho xóa mềm.
-- Nhưng confirm modal nên cảnh báo nếu Mapping đã từng được dùng.
+- Nhưng confirm modal nên cảnh báo nếu Mapping đang được chọn ở màn hình `CSV作成`.
 
 Thông báo cảnh báo đề xuất:
 
-- `このマッピングは過去のインポートで使用されています。削除しても履歴には残ります。`
+- `このマッピングはCSV作成画面で使用中です。削除してもよろしいですか。`
 
-Nếu Mapping đang được dùng trong một batch đang xử lý dở, hệ thống nên chặn xóa hoặc yêu cầu người dùng xử lý batch trước.
+Nếu Mapping đang được dùng trong phiên xử lý đang mở và việc xóa có thể làm mất dữ liệu đang xem/sửa, hệ thống nên chặn xóa hoặc yêu cầu người dùng đóng phiên xử lý trước.
 
 Message chặn xóa đề xuất:
 
-- `処理中のインポートで使用されているため、削除できません。`
+- `CSV作成画面で使用中のため、削除できません。`
 
 ### 8. Nếu xóa thất bại thì báo lỗi gì
 
@@ -1107,7 +1120,7 @@ Các lỗi đề xuất:
 | Lỗi hệ thống | `削除できませんでした。時間をおいて再度お試しください。` | Không xóa |
 | Mapping không tồn tại | `対象のマッピングが見つかりません。` | Tải lại danh sách |
 | Không có quyền | `マッピングを削除する権限がありません。` | Không xóa |
-| Đang được batch xử lý dùng | `処理中のインポートで使用されているため、削除できません。` | Không xóa |
+| Đang được màn hình CSV作成 sử dụng | `CSV作成画面で使用中のため、削除できません。` | Không xóa |
 
 Lưu ý:
 
@@ -1851,6 +1864,7 @@ Các format hỗ trợ trong giai đoạn đầu:
 | --- | --- | --- |
 | `string` | `文字列` | Dữ liệu dạng chữ |
 | `number` | `数値` | Dữ liệu dạng số |
+| `numberIntegerTruncate` | `Number 整数（小数切り捨て）` | Xóa phần thập phân, không làm tròn. Ví dụ `123.67` thành `123` |
 | `date` | `日付` | Dữ liệu dạng ngày |
 
 Rule:
@@ -1858,6 +1872,7 @@ Rule:
 - Nếu không chọn format, mặc định có thể hiểu là `string`.
 - Nếu chọn `date`, cần format xuất là `yyyymmdd`.
 - Nếu chọn `number`, preview/import nên cảnh báo nếu giá trị đọc được không phải số.
+- Nếu chọn `numberIntegerTruncate`, hệ thống phải xóa toàn bộ phần sau dấu thập phân và không được làm tròn.
 
 Message lỗi:
 
