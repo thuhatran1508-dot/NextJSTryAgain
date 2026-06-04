@@ -166,6 +166,7 @@ export function MappingPageContent() {
   const [historyOpen, setHistoryOpen] = React.useState(false)
   const [detailsOpen, setDetailsOpen] = React.useState(false)
   const [activeTab, setActiveTab] = React.useState("list")
+  const skipNextDraftSync = React.useRef(false)
 
   const selectedMapping = mappings.find((mapping) => mapping.id === selectedMappingId)
   const filteredMappings = mappings.filter((mapping) =>
@@ -200,6 +201,10 @@ export function MappingPageContent() {
 
   React.useEffect(() => {
     if (!selectedMapping) return
+    if (skipNextDraftSync.current) {
+      skipNextDraftSync.current = false
+      return
+    }
     setDraft(structuredClone(selectedMapping))
     setDetailsOpen(true)
     setIssues([])
@@ -311,17 +316,80 @@ export function MappingPageContent() {
     updateDraft({ entries: sortMappingEntries(draft.entries) })
   }
 
+  const normalizeMappingForSave = (mapping: ImportMappingConfig) => ({
+    ...mapping,
+    validRowColumn: mapping.validRowColumn.trim().toUpperCase(),
+    entries: sortMappingEntries(mapping.entries).map((entry) => ({
+      ...entry,
+      targetColumns: sortCsvColumns(entry.targetColumns),
+    })),
+  })
+
+  const persistMapping = async (
+    mapping: ImportMappingConfig,
+    options: { preserveDraft?: boolean; successMessage: string }
+  ) => {
+    const saved = await mappingConfigRepository.save(mapping, userEmail)
+    if (options.preserveDraft) {
+      skipNextDraftSync.current = true
+    }
+    setMappings((current) => {
+      const exists = current.some((item) => item.id === saved.id)
+      return exists
+        ? current.map((item) => (item.id === saved.id ? saved : item))
+        : [saved, ...current]
+    })
+    setSelectedMappingId(saved.id)
+    if (!options.preserveDraft) {
+      setDraft(saved)
+    }
+    toast.success(options.successMessage)
+    return saved
+  }
+
+  const saveEntry = async (entryId: string) => {
+    if (!draft) return
+
+    const draftEntry = draft.entries.find((entry) => entry.id === entryId)
+    if (!draftEntry) return
+
+    const baseMapping = selectedMapping ?? draft
+    const baseEntryExists = baseMapping.entries.some((entry) => entry.id === entryId)
+    const nextMapping = normalizeMappingForSave({
+      ...baseMapping,
+      entries: baseEntryExists
+        ? baseMapping.entries.map((entry) =>
+            entry.id === entryId ? structuredClone(draftEntry) : entry
+          )
+        : [...baseMapping.entries, structuredClone(draftEntry)],
+    })
+    const result = validateImportMappingConfig(nextMapping, {
+      existingMappings: mappings,
+    })
+    setIssues(result.issues)
+
+    if (!result.valid) {
+      toast.error("入力内容を確認してください。")
+      return
+    }
+
+    setSaving(true)
+    try {
+      await persistMapping(nextMapping, {
+        preserveDraft: true,
+        successMessage: "行を保存しました。",
+      })
+    } catch {
+      toast.error("行を保存できませんでした。")
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const saveMapping = async () => {
     if (!draft) return
 
-    const normalizedDraft = {
-      ...draft,
-      validRowColumn: draft.validRowColumn.trim().toUpperCase(),
-      entries: sortMappingEntries(draft.entries).map((entry) => ({
-        ...entry,
-        targetColumns: sortCsvColumns(entry.targetColumns),
-      })),
-    }
+    const normalizedDraft = normalizeMappingForSave(draft)
     const result = validateImportMappingConfig(normalizedDraft, {
       existingMappings: mappings,
     })
@@ -611,9 +679,12 @@ export function MappingPageContent() {
                           onMoveUp={() => moveEntry(entry.id, "up")}
                           onMoveDown={() => moveEntry(entry.id, "down")}
                           onDelete={() => deleteEntry(entry.id)}
+                          onSaveEntry={() => saveEntry(entry.id)}
+                          onSaveAll={saveMapping}
                           canMoveUp={index > 0}
                           canMoveDown={index < draft.entries.length - 1}
                           canDelete={draft.entries.length > 1}
+                          saving={saving}
                         />
                       ))}
                     </div>
@@ -662,9 +733,12 @@ function MappingEntryRow({
   onMoveUp,
   onMoveDown,
   onDelete,
+  onSaveEntry,
+  onSaveAll,
   canMoveUp,
   canMoveDown,
   canDelete,
+  saving,
 }: {
   entry: ImportMappingEntry
   issues: MappingValidationIssue[]
@@ -673,9 +747,12 @@ function MappingEntryRow({
   onMoveUp: () => void
   onMoveDown: () => void
   onDelete: () => void
+  onSaveEntry: () => void
+  onSaveAll: () => void
   canMoveUp: boolean
   canMoveDown: boolean
   canDelete: boolean
+  saving: boolean
 }) {
   const targetColumnsText = entry.targetColumns.join(", ")
 
@@ -740,6 +817,20 @@ function MappingEntryRow({
         <Button type="button" size="sm" variant="outline" onClick={onMoveDown} disabled={!canMoveDown}>
           <ArrowDown className="size-4" />
           下へ
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={onSaveEntry}
+          disabled={saving}
+        >
+          <Save className="size-4" />
+          保存
+        </Button>
+        <Button type="button" size="sm" onClick={onSaveAll} disabled={saving}>
+          <Save className="size-4" />
+          すべて保存
         </Button>
         <Button
           type="button"
