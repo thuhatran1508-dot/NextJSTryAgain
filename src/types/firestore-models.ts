@@ -217,6 +217,7 @@ export interface ImportMappingEntry {
   lookupTargetColumn?: CsvColumnLetter
   format: ImportMappingDataFormat
   formatConditions?: ImportMappingFormatCondition[]
+  hideInCompactView?: boolean
   scope: ImportMappingScope
   note?: string
 }
