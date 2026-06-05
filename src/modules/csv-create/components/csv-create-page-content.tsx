@@ -1,13 +1,19 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
+import type { MouseEvent as ReactMouseEvent } from "react"
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  Columns3,
   Download,
   Eye,
   EyeOff,
   FilePlus2,
   FileSpreadsheet,
+  GripVertical,
   LogOut,
   Maximize2,
   Plus,
@@ -19,6 +25,14 @@ import {
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -28,6 +42,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { mappingConfigRepository } from "@/modules/import-mapping/services/import-mapping-services"
 import {
   getCsvColumnIndex,
@@ -146,12 +165,25 @@ function makeExportName(sourceFileName?: string) {
 }
 
 const CSV_SESSION_STORAGE_KEY = "csv-create-working-session"
+const MIN_CSV_COLUMN_WIDTH = 72
+const MAX_AUTO_CSV_COLUMN_WIDTH = 280
+const DEFAULT_CSV_COLUMN_WIDTH = 136
+
+type CsvSortDirection = "asc" | "desc"
+
+interface CsvSortState {
+  column: CsvColumnLetter
+  direction: CsvSortDirection
+}
 
 interface CsvCreateSessionState {
   sessionOpen: boolean
   sessionId: string
   selectedMappingId: string
   displayMode: CsvDisplayMode
+  columnWidths: Partial<Record<CsvColumnLetter, number>>
+  hiddenColumns: CsvColumnLetter[]
+  sortState: CsvSortState | null
   rows: CsvWorkingRow[]
   draftRows: CsvWorkingRow[]
   issues: CsvValidationIssue[]
@@ -168,6 +200,9 @@ function getEmptySessionState(selectedMappingId = ""): CsvCreateSessionState {
     sessionId: "",
     selectedMappingId,
     displayMode: "full",
+    columnWidths: {},
+    hiddenColumns: [],
+    sortState: null,
     rows: [],
     draftRows: [],
     issues: [],
@@ -202,6 +237,9 @@ function loadStoredSessionState() {
       issues: parsed.issues ?? [],
       manualInputs: parsed.manualInputs ?? [],
       manualValues: parsed.manualValues ?? {},
+      columnWidths: parsed.columnWidths ?? {},
+      hiddenColumns: parsed.hiddenColumns ?? [],
+      sortState: parsed.sortState ?? null,
       lastExcel: parsed.lastExcel ?? null,
     }
   } catch {
@@ -232,6 +270,9 @@ export function CsvCreatePageContent() {
   const [mappingLoading, setMappingLoading] = useState(true)
   const [processing, setProcessing] = useState(false)
   const [displayMode, setDisplayMode] = useState<CsvDisplayMode>(initialSession.displayMode)
+  const [columnWidths, setColumnWidths] = useState<Partial<Record<CsvColumnLetter, number>>>(initialSession.columnWidths)
+  const [hiddenColumns, setHiddenColumns] = useState<CsvColumnLetter[]>(initialSession.hiddenColumns)
+  const [sortState, setSortState] = useState<CsvSortState | null>(initialSession.sortState)
   const [rows, setRows] = useState<CsvWorkingRow[]>(initialSession.rows)
   const [draftRows, setDraftRows] = useState<CsvWorkingRow[]>(initialSession.draftRows)
   const [issues, setIssues] = useState<CsvValidationIssue[]>(initialSession.issues)
@@ -267,6 +308,9 @@ export function CsvCreatePageContent() {
       sessionId,
       selectedMappingId,
       displayMode,
+      columnWidths,
+      hiddenColumns,
+      sortState,
       rows,
       draftRows,
       issues,
@@ -281,6 +325,9 @@ export function CsvCreatePageContent() {
     sessionId,
     selectedMappingId,
     displayMode,
+    columnWidths,
+    hiddenColumns,
+    sortState,
     rows,
     draftRows,
     issues,
@@ -315,6 +362,9 @@ export function CsvCreatePageContent() {
   function clearWorkingData(nextSelectedMappingId = selectedMappingId) {
     setSelectedMappingId(nextSelectedMappingId)
     setDisplayMode("full")
+    setColumnWidths({})
+    setHiddenColumns([])
+    setSortState(null)
     setRows([])
     setDraftRows([])
     setIssues([])
@@ -513,8 +563,22 @@ export function CsvCreatePageContent() {
       mapping={selectedMapping}
       rows={draftRows}
       columns={visibleColumns}
+      columnWidths={columnWidths}
+      hiddenColumns={hiddenColumns}
+      sortState={sortState}
       issueByCell={issueByCell}
       onChangeCell={updateCell}
+      onChangeColumnWidth={(column, width) => {
+        setColumnWidths((currentWidths) => ({ ...currentWidths, [column]: width }))
+      }}
+      onToggleColumn={(column) => {
+        setHiddenColumns((currentColumns) =>
+          currentColumns.includes(column)
+            ? currentColumns.filter((currentColumn) => currentColumn !== column)
+            : [...currentColumns, column]
+        )
+      }}
+      onChangeSort={setSortState}
       expanded={isExpanded}
     />
   ) : null
@@ -589,6 +653,9 @@ export function CsvCreatePageContent() {
               setRows([])
               setDraftRows([])
               setIssues([])
+              setColumnWidths({})
+              setHiddenColumns([])
+              setSortState(null)
               setLastExcel(null)
               setSourceFileName("")
               setHasUnsavedChanges(false)
@@ -793,49 +860,225 @@ function ValidationPanel({
   )
 }
 
+function estimateTextWidth(value: string) {
+  return Array.from(value).reduce((width, char) => {
+    return width + (/[\u3000-\u9fff\uac00-\ud7af\uff00-\uffef]/.test(char) ? 14 : 7)
+  }, 0)
+}
+
+function getAutoColumnWidth(mapping: ImportMappingConfig, rows: CsvWorkingRow[], column: CsvColumnLetter) {
+  const headerWidth = estimateTextWidth(getColumnLabel(mapping, column))
+  const contentWidth = rows.slice(0, 120).reduce((width, row) => {
+    return Math.max(width, estimateTextWidth(row.values[column]?.value ?? ""))
+  }, 0)
+
+  return Math.max(
+    MIN_CSV_COLUMN_WIDTH,
+    Math.min(MAX_AUTO_CSV_COLUMN_WIDTH, Math.max(headerWidth, contentWidth) + 34)
+  )
+}
+
+function shouldShowCellTooltip(value: string, columnWidth: number) {
+  return Boolean(value.trim()) && estimateTextWidth(value) > columnWidth - 24
+}
+
 function CsvWorkingTable({
   mapping,
   rows,
   columns,
+  columnWidths,
+  hiddenColumns,
+  sortState,
   issueByCell,
   onChangeCell,
+  onChangeColumnWidth,
+  onToggleColumn,
+  onChangeSort,
   expanded,
 }: {
   mapping: ImportMappingConfig
   rows: CsvWorkingRow[]
   columns: CsvColumnLetter[]
+  columnWidths: Partial<Record<CsvColumnLetter, number>>
+  hiddenColumns: CsvColumnLetter[]
+  sortState: CsvSortState | null
   issueByCell: Map<string, CsvValidationIssue[]>
   onChangeCell: (rowId: string, column: CsvColumnLetter, value: string) => void
+  onChangeColumnWidth: (column: CsvColumnLetter, width: number) => void
+  onToggleColumn: (column: CsvColumnLetter) => void
+  onChangeSort: (sortState: CsvSortState | null) => void
   expanded: boolean
 }) {
+  const visibleTableColumns = useMemo(
+    () => columns.filter((column) => !hiddenColumns.includes(column)),
+    [columns, hiddenColumns]
+  )
+  const effectiveColumns = visibleTableColumns.length ? visibleTableColumns : columns.slice(0, 1)
+  const sortedRows = useMemo(() => {
+    if (!sortState) return rows
+
+    return [...rows].sort((a, b) => {
+      const aValue = a.values[sortState.column]?.value ?? ""
+      const bValue = b.values[sortState.column]?.value ?? ""
+      const aNumber = Number(aValue)
+      const bNumber = Number(bValue)
+      const bothNumeric = aValue !== "" && bValue !== "" && Number.isFinite(aNumber) && Number.isFinite(bNumber)
+      const result = bothNumeric
+        ? aNumber - bNumber
+        : String(aValue).localeCompare(String(bValue), "ja", { numeric: true, sensitivity: "base" })
+
+      return sortState.direction === "asc" ? result : -result
+    })
+  }, [rows, sortState])
+  const autoColumnWidths = useMemo(() => {
+    return Object.fromEntries(
+      columns.map((column) => [column, getAutoColumnWidth(mapping, rows, column)])
+    ) as Partial<Record<CsvColumnLetter, number>>
+  }, [columns, mapping, rows])
+
+  function getColumnWidth(column: CsvColumnLetter) {
+    return columnWidths[column] ?? autoColumnWidths[column] ?? DEFAULT_CSV_COLUMN_WIDTH
+  }
+
+  function toggleSort(column: CsvColumnLetter) {
+    if (!sortState || sortState.column !== column) {
+      onChangeSort({ column, direction: "asc" })
+      return
+    }
+    if (sortState.direction === "asc") {
+      onChangeSort({ column, direction: "desc" })
+      return
+    }
+    onChangeSort(null)
+  }
+
+  function startResize(event: ReactMouseEvent<HTMLButtonElement>, column: CsvColumnLetter) {
+    event.preventDefault()
+    event.stopPropagation()
+
+    const startX = event.clientX
+    const startWidth = getColumnWidth(column)
+
+    function handleMouseMove(moveEvent: MouseEvent) {
+      const nextWidth = Math.max(MIN_CSV_COLUMN_WIDTH, startWidth + moveEvent.clientX - startX)
+      onChangeColumnWidth(column, Math.round(nextWidth))
+    }
+
+    function handleMouseUp() {
+      window.removeEventListener("mousemove", handleMouseMove)
+      window.removeEventListener("mouseup", handleMouseUp)
+    }
+
+    window.addEventListener("mousemove", handleMouseMove)
+    window.addEventListener("mouseup", handleMouseUp)
+  }
+
   return (
-    <div className={expanded ? "h-full overflow-auto" : "max-h-[68vh] overflow-auto"}>
-      <table className="w-max min-w-full border-separate border-spacing-0 text-sm">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex items-center justify-between gap-2 border-b bg-background px-3 py-2">
+        <div className="text-xs text-muted-foreground">
+          {effectiveColumns.length}/{columns.length} 列表示
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" size="sm" variant="outline">
+              <Columns3 className="size-4" />
+              列
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="max-h-80 min-w-56">
+            <DropdownMenuLabel>表示する列</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {columns.map((column) => {
+              const checked = !hiddenColumns.includes(column)
+              return (
+                <DropdownMenuCheckboxItem
+                  key={column}
+                  checked={checked}
+                  disabled={checked && effectiveColumns.length <= 1}
+                  onCheckedChange={() => onToggleColumn(column)}
+                >
+                  <span className="max-w-44 truncate">{getColumnLabel(mapping, column)}</span>
+                </DropdownMenuCheckboxItem>
+              )
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      <div className={expanded ? "min-h-0 flex-1 overflow-auto" : "max-h-[68vh] overflow-auto"}>
+      <table className="w-max min-w-full table-fixed border-separate border-spacing-0 text-sm">
+        <colgroup>
+          <col style={{ width: 64 }} />
+          {effectiveColumns.map((column) => (
+            <col key={column} style={{ width: getColumnWidth(column) }} />
+          ))}
+        </colgroup>
         <thead>
           <tr>
-            <th className="sticky left-0 top-0 z-30 min-w-20 border-b border-r bg-muted px-3 py-2 text-left font-medium">
+            <th className="sticky left-0 top-0 z-30 border-b border-r bg-muted px-3 py-2 text-left font-medium">
               行
             </th>
-            {columns.map((column) => (
-              <th
-                key={column}
-                className="sticky top-0 z-20 min-w-44 border-b border-r bg-muted px-3 py-2 text-left font-medium"
-              >
-                <div className="truncate">{getColumnLabel(mapping, column)}</div>
-              </th>
-            ))}
+            {effectiveColumns.map((column) => {
+              const label = getColumnLabel(mapping, column)
+              const activeSort = sortState?.column === column ? sortState.direction : null
+              const columnWidth = getColumnWidth(column)
+              return (
+                <th
+                  key={column}
+                  className="sticky top-0 z-20 border-b border-r bg-muted p-0 text-left font-medium"
+                  style={{ width: columnWidth, minWidth: MIN_CSV_COLUMN_WIDTH }}
+                >
+                  <div className="relative flex h-10 items-center">
+                    <button
+                      type="button"
+                      onClick={() => toggleSort(column)}
+                      className="flex h-full min-w-0 flex-1 items-center gap-1 px-3 pr-6 text-left outline-none hover:bg-accent focus:bg-accent"
+                      aria-label={`${label} sort`}
+                    >
+                      <span className="truncate">{label}</span>
+                      {activeSort === "asc" ? (
+                        <ArrowUp className="size-3.5 shrink-0 text-muted-foreground" />
+                      ) : activeSort === "desc" ? (
+                        <ArrowDown className="size-3.5 shrink-0 text-muted-foreground" />
+                      ) : (
+                        <ArrowUpDown className="size-3.5 shrink-0 text-muted-foreground" />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onMouseDown={(event) => startResize(event, column)}
+                      className="absolute right-0 top-0 flex h-full w-4 cursor-col-resize items-center justify-center text-muted-foreground hover:bg-border"
+                      aria-label={`${label} resize`}
+                    >
+                      <GripVertical className="size-3" />
+                    </button>
+                  </div>
+                </th>
+              )
+            })}
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
+          {sortedRows.map((row) => (
             <tr key={row.id}>
               <td className="sticky left-0 z-10 border-b border-r bg-background px-3 py-2 text-muted-foreground">
                 {row.rowNumber}
               </td>
-              {columns.map((column) => {
+              {effectiveColumns.map((column) => {
                 const cell = row.values[column]
+                const cellValue = cell?.value ?? ""
                 const cellIssues = issueByCell.get(getCellKey(row.id, column)) ?? []
                 const hasIssue = cellIssues.length > 0
+                const columnWidth = getColumnWidth(column)
+                const showFullValue = shouldShowCellTooltip(cellValue, columnWidth)
+                const input = (
+                  <input
+                    value={cellValue}
+                    onChange={(event) => onChangeCell(row.id, column, event.target.value)}
+                    className="h-9 w-full truncate bg-transparent px-3 text-sm outline-none focus:bg-background focus:ring-2 focus:ring-ring"
+                    aria-label={`${getColumnLabel(mapping, column)} ${row.rowNumber}行`}
+                  />
+                )
                 return (
                   <td
                     key={`${row.id}-${column}`}
@@ -844,14 +1087,23 @@ function CsvWorkingTable({
                       hasIssue ? "bg-amber-100/70 dark:bg-amber-950/40" : "",
                       cell?.edited ? "bg-sky-50 dark:bg-sky-950/30" : "",
                     ].join(" ")}
+                    style={{ width: columnWidth, minWidth: MIN_CSV_COLUMN_WIDTH }}
                     title={cellIssues.map((issue) => issue.message).join("\n")}
                   >
-                    <input
-                      value={cell?.value ?? ""}
-                      onChange={(event) => onChangeCell(row.id, column, event.target.value)}
-                      className="h-9 w-full min-w-44 bg-transparent px-3 text-sm outline-none focus:bg-background focus:ring-2 focus:ring-ring"
-                      aria-label={`${getColumnLabel(mapping, column)} ${row.rowNumber}行`}
-                    />
+                    {showFullValue ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>{input}</TooltipTrigger>
+                        <TooltipContent
+                          side="top"
+                          align="start"
+                          className="max-w-xl whitespace-pre-wrap break-words border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-lg"
+                        >
+                          {cellValue}
+                        </TooltipContent>
+                      </Tooltip>
+                    ) : (
+                      input
+                    )}
                   </td>
                 )
               })}
@@ -859,6 +1111,7 @@ function CsvWorkingTable({
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   )
 }
