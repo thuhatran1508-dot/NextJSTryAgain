@@ -118,6 +118,11 @@ function issueKey(issue: CsvValidationIssue) {
   return issue.rowId && issue.csvColumn ? getCellKey(issue.rowId, issue.csvColumn) : ""
 }
 
+function isResolvedByCellValue(issue: CsvValidationIssue, value: string | undefined) {
+  if (!String(value ?? "").trim()) return false
+  return ["sourceMissing", "required", "masterLookup"].includes(issue.issueType)
+}
+
 function getIssueSummary(issues: CsvValidationIssue[]) {
   return {
     total: issues.length,
@@ -293,14 +298,22 @@ export function CsvCreatePageContent() {
   )
   const issueSummary = useMemo(() => getIssueSummary(issues), [issues])
   const issueByCell = useMemo(() => {
+    const valueByKey = new Map<string, string>()
+    draftRows.forEach((row) => {
+      Object.values(row.values).forEach((cell) => {
+        if (cell) valueByKey.set(getCellKey(row.id, cell.column), cell.value)
+      })
+    })
+
     const map = new Map<string, CsvValidationIssue[]>()
     issues.forEach((issue) => {
       const key = issueKey(issue)
       if (!key) return
+      if (isResolvedByCellValue(issue, valueByKey.get(key))) return
       map.set(key, [...(map.get(key) ?? []), issue])
     })
     return map
-  }, [issues])
+  }, [draftRows, issues])
 
   useEffect(() => {
     storeSessionState({

@@ -515,13 +515,16 @@ export function buildCsvRowsFromMapping(options: BuildCsvRowsOptions): BuildCsvR
       if (entry.dataSource !== "masterLookup") continue
       const result = lookupMasterData(entry, draft, masterData)
       const target = entry.lookupTargetColumn ?? entry.targetColumns[0]
+      let shouldReportMissingLookup = true
       if (target) {
         const currentValue = normalizeText(draft[target]?.value)
         if (result.found || !currentValue) {
           draft[target] = createCell(entry, target, result.value, "masterLookup")
+        } else {
+          shouldReportMissingLookup = false
         }
       }
-      if (!result.found) {
+      if (!result.found && shouldReportMissingLookup) {
         issues.push(
           makeIssue({
             rowId: row.id,
