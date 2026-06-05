@@ -1,7 +1,10 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import type { MouseEvent as ReactMouseEvent } from "react"
+import type {
+  ClipboardEvent as ReactClipboardEvent,
+  MouseEvent as ReactMouseEvent,
+} from "react"
 import {
   AlertTriangle,
   ArrowDown,
@@ -182,6 +185,12 @@ type CsvSortDirection = "asc" | "desc"
 interface CsvSortState {
   column: CsvColumnLetter
   direction: CsvSortDirection
+}
+
+interface CsvCellEdit {
+  rowId: string
+  column: CsvColumnLetter
+  value: string
 }
 
 interface CsvCreateSessionState {
@@ -594,10 +603,63 @@ export function CsvCreatePageContent() {
     }
   }
 
-  function updateCell(rowId: string, column: CsvColumnLetter, value: string) {
+  function applyCellEdits(edits: CsvCellEdit[]) {
     if (!sessionOpen) return
+    if (!edits.length) return
     const nextRows = draftRows.map((row) => {
-      if (row.id !== rowId) return row
+      const rowEdits = edits.filter((edit) => edit.rowId === row.id)
+      if (!rowEdits.length) return row
+      const nextValues = { ...row.values }
+      rowEdits.forEach((edit) => {
+        const currentCell = row.values[edit.column]
+        nextValues[edit.column] = {
+          column: edit.column,
+          columnName: currentCell?.columnName ?? edit.column,
+          value: edit.value,
+          rawValue: edit.value,
+          source: currentCell?.source ?? "manualInput",
+          mappingEntryId: currentCell?.mappingEntryId,
+          edited: true,
+          issueTypes: currentCell?.issueTypes,
+        }
+      })
+      return {
+        ...row,
+        values: nextValues,
+      }
+    })
+
+    if (selectedMapping) {
+      const refreshed = refreshDerivedCsvRows({
+        rows: nextRows,
+        mapping: selectedMapping,
+        masterData: masterDataStore ?? {},
+        existingIssues: issues,
+      })
+      setDraftRows(refreshed.rows)
+      setIssues(refreshed.issues)
+    } else {
+      setDraftRows(nextRows)
+    }
+    setHasUnsavedChanges(true)
+  }
+
+  function maybeFillFixedCellColumn(rowId: string, column: CsvColumnLetter, value: string) {
+    if (!selectedMapping || !sessionOpen) return
+    const editedCell = draftRows.find((row) => row.id === rowId)?.values[column]
+    if (!editedCell?.edited) return
+    const entry = getColumnEntry(selectedMapping, column)
+    const isFixedCellColumn =
+      entry?.dataSource === "orderFile" &&
+      entry.orderFileMode === "fixedCell" &&
+      getEntryColumns(entry).includes(column)
+    if (!isFixedCellColumn) return
+
+    const shouldFill = window.confirm("同じ値をこの列の残りすべての行に入力しますか。")
+    if (!shouldFill) return
+
+    const nextRows = draftRows.map((row) => {
+      if (row.id === rowId) return row
       const currentCell = row.values[column]
       return {
         ...row,
@@ -630,6 +692,10 @@ export function CsvCreatePageContent() {
       setDraftRows(nextRows)
     }
     setHasUnsavedChanges(true)
+  }
+
+  function updateCell(rowId: string, column: CsvColumnLetter, value: string) {
+    applyCellEdits([{ rowId, column, value }])
   }
 
   function saveEdits() {
@@ -704,6 +770,8 @@ export function CsvCreatePageContent() {
       sortState={sortState}
       issueByCell={issueByCell}
       onChangeCell={updateCell}
+      onPasteCells={applyCellEdits}
+      onCommitCell={maybeFillFixedCellColumn}
       onChangeColumnWidth={(column, width) => {
         setColumnWidths((currentWidths) => ({ ...currentWidths, [column]: width }))
       }}
@@ -1027,6 +1095,8 @@ function CsvWorkingTable({
   sortState,
   issueByCell,
   onChangeCell,
+  onPasteCells,
+  onCommitCell,
   onChangeColumnWidth,
   onToggleColumn,
   onChangeSort,
@@ -1040,6 +1110,8 @@ function CsvWorkingTable({
   sortState: CsvSortState | null
   issueByCell: Map<string, CsvValidationIssue[]>
   onChangeCell: (rowId: string, column: CsvColumnLetter, value: string) => void
+  onPasteCells: (edits: CsvCellEdit[]) => void
+  onCommitCell: (rowId: string, column: CsvColumnLetter, value: string) => void
   onChangeColumnWidth: (column: CsvColumnLetter, width: number) => void
   onToggleColumn: (column: CsvColumnLetter) => void
   onChangeSort: (sortState: CsvSortState | null) => void
@@ -1107,6 +1179,44 @@ function CsvWorkingTable({
 
     window.addEventListener("mousemove", handleMouseMove)
     window.addEventListener("mouseup", handleMouseUp)
+  }
+
+  function parseClipboardMatrix(text: string) {
+    return text
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n")
+      .split("\n")
+      .filter((line, index, lines) => index < lines.length - 1 || line.length > 0)
+      .map((line) => line.split("\t"))
+  }
+
+  function handlePaste(
+    event: ReactClipboardEvent<HTMLInputElement>,
+    startRowId: string,
+    startColumn: CsvColumnLetter
+  ) {
+    const text = event.clipboardData.getData("text")
+    if (!text.includes("\t") && !text.includes("\n")) return
+
+    const startRowIndex = sortedRows.findIndex((row) => row.id === startRowId)
+    const startColumnIndex = effectiveColumns.indexOf(startColumn)
+    if (startRowIndex < 0 || startColumnIndex < 0) return
+
+    const matrix = parseClipboardMatrix(text)
+    const edits: CsvCellEdit[] = []
+    matrix.forEach((values, rowOffset) => {
+      const row = sortedRows[startRowIndex + rowOffset]
+      if (!row) return
+      values.forEach((value, columnOffset) => {
+        const column = effectiveColumns[startColumnIndex + columnOffset]
+        if (!column) return
+        edits.push({ rowId: row.id, column, value })
+      })
+    })
+
+    if (!edits.length) return
+    event.preventDefault()
+    onPasteCells(edits)
   }
 
   return (
@@ -1211,6 +1321,8 @@ function CsvWorkingTable({
                   <input
                     value={cellValue}
                     onChange={(event) => onChangeCell(row.id, column, event.target.value)}
+                    onBlur={(event) => onCommitCell(row.id, column, event.target.value)}
+                    onPaste={(event) => handlePaste(event, row.id, column)}
                     className="h-9 w-full truncate bg-transparent px-3 text-sm outline-none focus:bg-background focus:ring-2 focus:ring-ring"
                     aria-label={`${getColumnLabel(mapping, column)} ${row.rowNumber}行`}
                   />
