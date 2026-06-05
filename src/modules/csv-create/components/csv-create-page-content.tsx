@@ -202,6 +202,8 @@ interface CsvCreateSessionState {
   hasUnsavedChanges: boolean
 }
 
+let inMemoryCsvSessionState: CsvCreateSessionState | null = null
+
 function getEmptySessionState(selectedMappingId = ""): CsvCreateSessionState {
   return {
     sessionOpen: false,
@@ -227,6 +229,7 @@ function createSessionId() {
 }
 
 function loadStoredSessionState() {
+  if (inMemoryCsvSessionState?.sessionOpen) return inMemoryCsvSessionState
   if (typeof window === "undefined") return getEmptySessionState()
 
   try {
@@ -256,14 +259,61 @@ function loadStoredSessionState() {
 }
 
 function storeSessionState(state: CsvCreateSessionState) {
+  inMemoryCsvSessionState = state.sessionOpen ? state : null
   if (typeof window === "undefined") return
 
   if (!state.sessionOpen) {
-    window.sessionStorage.removeItem(CSV_SESSION_STORAGE_KEY)
+    try {
+      window.sessionStorage.removeItem(CSV_SESSION_STORAGE_KEY)
+    } catch {
+      // Storage can be unavailable in private or quota-limited contexts.
+    }
     return
   }
 
-  window.sessionStorage.setItem(CSV_SESSION_STORAGE_KEY, JSON.stringify(state))
+  const serializedState = JSON.stringify(state)
+  if (serializedState.length > 2_500_000) {
+    const lightweightState: CsvCreateSessionState = {
+      ...state,
+      rows: [],
+      draftRows: [],
+      issues: [],
+      lastExcel: null,
+    }
+
+    try {
+      window.sessionStorage.setItem(CSV_SESSION_STORAGE_KEY, JSON.stringify(lightweightState))
+    } catch {
+      try {
+        window.sessionStorage.removeItem(CSV_SESSION_STORAGE_KEY)
+      } catch {
+        // The in-memory session still protects SPA navigation.
+      }
+    }
+    return
+  }
+
+  try {
+    window.sessionStorage.setItem(CSV_SESSION_STORAGE_KEY, serializedState)
+  } catch {
+    const lightweightState: CsvCreateSessionState = {
+      ...state,
+      rows: [],
+      draftRows: [],
+      issues: [],
+      lastExcel: null,
+    }
+
+    try {
+      window.sessionStorage.setItem(CSV_SESSION_STORAGE_KEY, JSON.stringify(lightweightState))
+    } catch {
+      try {
+        window.sessionStorage.removeItem(CSV_SESSION_STORAGE_KEY)
+      } catch {
+        // Nothing else to do; the in-memory session still protects SPA navigation.
+      }
+    }
+  }
 }
 
 export function CsvCreatePageContent() {
