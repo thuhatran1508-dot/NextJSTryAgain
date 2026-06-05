@@ -516,7 +516,10 @@ export function buildCsvRowsFromMapping(options: BuildCsvRowsOptions): BuildCsvR
       const result = lookupMasterData(entry, draft, masterData)
       const target = entry.lookupTargetColumn ?? entry.targetColumns[0]
       if (target) {
-        draft[target] = createCell(entry, target, result.value, "masterLookup")
+        const currentValue = normalizeText(draft[target]?.value)
+        if (result.found || !currentValue) {
+          draft[target] = createCell(entry, target, result.value, "masterLookup")
+        }
       }
       if (!result.found) {
         issues.push(
@@ -567,6 +570,7 @@ export function buildCsvRowsFromMapping(options: BuildCsvRowsOptions): BuildCsvR
 
     for (const entry of sortedEntries) {
       getEntryColumns(entry).forEach((column) => {
+        if (draft[column]?.mappingEntryId !== entry.id) return
         formatRowCell(row, column, entry, issues)
         if (draft[column] && !normalizeText(draft[column]?.value) && entry.dataSource !== "blank") {
           draft[column]!.issueTypes = [...(draft[column]!.issueTypes ?? []), "sourceMissing"]
