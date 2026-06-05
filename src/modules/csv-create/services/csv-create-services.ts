@@ -593,6 +593,119 @@ export function buildCsvRowsFromMapping(options: BuildCsvRowsOptions): BuildCsvR
   }
 }
 
+function getMasterLookupTarget(entry: ImportMappingEntry) {
+  return entry.lookupTargetColumn ?? entry.targetColumns[0]
+}
+
+function getDerivedIssueColumns(mapping: ImportMappingConfig) {
+  const columns = new Set<CsvColumnLetter>()
+  mapping.entries.forEach((entry) => {
+    if (entry.dataSource === "formula") {
+      entry.targetColumns.forEach((column) => columns.add(column))
+    }
+    if (entry.dataSource === "masterLookup") {
+      const target = getMasterLookupTarget(entry)
+      if (target) columns.add(target)
+    }
+  })
+  return columns
+}
+
+function cloneWorkingRows(rows: CsvWorkingRow[]) {
+  return rows.map((row) => ({
+    ...row,
+    values: Object.fromEntries(
+      Object.entries(row.values).map(([column, cell]) => [
+        column,
+        cell ? { ...cell, issueTypes: cell.issueTypes ? [...cell.issueTypes] : undefined } : cell,
+      ])
+    ) as CsvWorkingRow["values"],
+  }))
+}
+
+export function refreshDerivedCsvRows({
+  rows,
+  mapping,
+  masterData,
+  existingIssues = [],
+}: {
+  rows: CsvWorkingRow[]
+  mapping: ImportMappingConfig
+  masterData: MasterDataLookupStore
+  existingIssues?: CsvValidationIssue[]
+}) {
+  const sortedEntries = sortMappingEntries(mapping.entries)
+  const nextRows = cloneWorkingRows(rows)
+  const derivedColumns = getDerivedIssueColumns(mapping)
+  const issues = existingIssues.filter((issue) => {
+    if (["formula", "masterLookup", "required"].includes(issue.issueType)) return false
+    if (issue.csvColumn && derivedColumns.has(issue.csvColumn) && issue.issueType === "sourceMissing") {
+      return false
+    }
+    return true
+  })
+
+  nextRows.forEach((row) => {
+    const draft = row.values
+
+    for (const entry of sortedEntries) {
+      if (entry.dataSource !== "masterLookup") continue
+      const result = lookupMasterData(entry, draft, masterData)
+      const target = getMasterLookupTarget(entry)
+      let shouldReportMissingLookup = true
+      if (target) {
+        const currentValue = normalizeText(draft[target]?.value)
+        if (result.found || !currentValue || draft[target]?.source === "masterLookup") {
+          draft[target] = createCell(entry, target, result.value, "masterLookup")
+          formatRowCell(row, target, entry, issues)
+        } else {
+          shouldReportMissingLookup = false
+        }
+      }
+      if (!result.found && shouldReportMissingLookup) {
+        issues.push(
+          makeIssue({
+            rowId: row.id,
+            rowNumber: row.rowNumber,
+            csvColumn: target,
+            mappingEntryId: entry.id,
+            issueType: "masterLookup",
+            missingMasterDataType: entry.lookupCollection,
+            sourceValue: result.sourceValue,
+            message: `${MASTER_DATA_LABELS[entry.lookupCollection ?? "CusCodeList"]}に該当データがありません。`,
+            suggestedAction: "マスタデータを追加するか、元データを確認してください。",
+          })
+        )
+      }
+    }
+
+    for (const entry of sortedEntries) {
+      if (entry.dataSource !== "formula") continue
+      const value = evaluateFormula(entry.formula, row.rowNumber, draft)
+      setCell(draft, entry, value, "formula")
+      if (value === "") {
+        issues.push(
+          makeIssue({
+            rowId: row.id,
+            rowNumber: row.rowNumber,
+            csvColumn: entry.targetColumns[0],
+            mappingEntryId: entry.id,
+            issueType: "formula",
+            message: "計算式を処理できません。",
+            suggestedAction: "マッピングの計算式を確認してください。",
+          })
+        )
+      }
+      entry.targetColumns.forEach((column) => formatRowCell(row, column, entry, issues))
+    }
+  })
+
+  return {
+    rows: nextRows,
+    issues: validateCsvRows(nextRows, issues),
+  }
+}
+
 export function validateCsvRows(rows: CsvWorkingRow[], existingIssues: CsvValidationIssue[] = []) {
   const issues = existingIssues.filter((issue) => issue.issueType !== "required")
 

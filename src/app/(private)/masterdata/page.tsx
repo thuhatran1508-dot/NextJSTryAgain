@@ -79,8 +79,19 @@ const tabLabels = {
 
 const emptySearchText = "検索条件に一致するデータが見つかりません。"
 
+const MASTER_DATA_CHANGED_STORAGE_KEY = "master-data:changed-at"
+
 function normalizeText(value?: string) {
   return String(value ?? "").trim().toLowerCase()
+}
+
+function normalizeKey(value?: string) {
+  return String(value ?? "").trim()
+}
+
+function notifyMasterDataChanged() {
+  if (typeof window === "undefined") return
+  window.localStorage.setItem(MASTER_DATA_CHANGED_STORAGE_KEY, new Date().toISOString())
 }
 
 function matchesSearch(value: string | undefined, query: string) {
@@ -94,13 +105,13 @@ function isDuplicateKey<T extends { id?: string }>(
   value: string,
   excludeId?: string
 ) {
-  const normalized = normalizeText(value)
+  const normalized = normalizeKey(value)
   if (!normalized) return false
 
   return list.some((record) => {
     return (
       record.id !== excludeId &&
-      normalizeText(String(record[key] ?? "")) === normalized
+      normalizeKey(String(record[key] ?? "")) === normalized
     )
   })
 }
@@ -191,22 +202,22 @@ function getExistingKeySets(tabKey: keyof typeof tabLabels, lists: {
     case "cus":
       return {
         keyField: "CusCode",
-        existingKeys: new Set(lists.cus.map((item) => normalizeText(item.CusCode))),
+        existingKeys: new Set(lists.cus.map((item) => normalizeKey(item.CusCode))),
       }
     case "unitPrice":
       return {
         keyField: "IzuyoshiJPCode",
-        existingKeys: new Set(lists.unitPrice.map((item) => normalizeText(item.IzuyoshiJPCode))),
+        existingKeys: new Set(lists.unitPrice.map((item) => normalizeKey(item.IzuyoshiJPCode))),
       }
     case "picwh":
       return {
         keyField: "PICCode",
-        existingKeys: new Set(lists.picwh.map((item) => normalizeText(item.PICCode))),
+        existingKeys: new Set(lists.picwh.map((item) => normalizeKey(item.PICCode))),
       }
     case "unitCode":
       return {
         keyField: "OrderUnit",
-        existingKeys: new Set(lists.unitCode.map((item) => normalizeText(item.OrderUnit))),
+        existingKeys: new Set(lists.unitCode.map((item) => normalizeKey(item.OrderUnit))),
       }
     default:
       return {
@@ -312,8 +323,8 @@ function validateImportRows(
   })
 
   const existingKeys = getExistingKeySets(tabKey, existingLists)
-  const existingMAVs = new Set(existingLists.item.map((item) => normalizeText(item.MAVCode)))
-  const existingMHBs = new Set(existingLists.item.map((item) => normalizeText(item.MHBCode)))
+  const existingMAVs = new Set(existingLists.item.map((item) => normalizeKey(item.MAVCode)))
+  const existingMHBs = new Set(existingLists.item.map((item) => normalizeKey(item.MHBCode)))
 
   return previewRows.map((previewRow, index) => {
     const row = previewRow.values
@@ -679,6 +690,11 @@ export default function MasterDataPage() {
     }
   }, [])
 
+  const reloadAfterMasterDataMutation = useCallback(async () => {
+    notifyMasterDataChanged()
+    await loadData()
+  }, [loadData])
+
   useEffect(() => {
     loadData()
   }, [loadData])
@@ -761,7 +777,7 @@ export default function MasterDataPage() {
       }
 
       toast.success("インポートが完了しました。")
-      await loadData()
+      await reloadAfterMasterDataMutation()
       setImportOpen(false)
       setImportFileName("")
       setImportPreviewRows([])
@@ -771,7 +787,7 @@ export default function MasterDataPage() {
     } finally {
       setIsImporting(false)
     }
-  }, [activeTab, importPreviewRows, loadData])
+  }, [activeTab, importPreviewRows, reloadAfterMasterDataMutation])
 
   const canConfirmImport = importPreviewRows.length > 0 && importPreviewRows.every((row) => row.valid)
   const importInvalidCount = importPreviewRows.filter((row) => !row.valid).length
@@ -1051,8 +1067,8 @@ export default function MasterDataPage() {
   }, [editingUnitCode, unitCodeEditForm])
 
   const handleSubmitCusCreate = async (values: CusCodeFormValues) => {
-    const normalized = normalizeText(values.CusCode)
-    if (isDuplicateKey(cusCodeList, "CusCode", normalized)) {
+    const code = normalizeKey(values.CusCode)
+    if (isDuplicateKey(cusCodeList, "CusCode", code)) {
       cusCreateForm.setError("CusCode", {
         type: "manual",
         message: `CusCode "${values.CusCode.trim()}" は既に存在します。`,
@@ -1070,7 +1086,7 @@ export default function MasterDataPage() {
       toast.success("CusCodeListを作成しました。")
       setNewCusOpen(false)
       cusCreateForm.reset()
-      await loadData()
+      await reloadAfterMasterDataMutation()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "作成に失敗しました。")
     }
@@ -1078,8 +1094,8 @@ export default function MasterDataPage() {
 
   const handleSubmitCusEdit = async (values: CusCodeFormValues) => {
     if (!editingCus) return
-    const normalized = normalizeText(values.CusCode)
-    if (isDuplicateKey(cusCodeList, "CusCode", normalized, editingCus.id)) {
+    const code = normalizeKey(values.CusCode)
+    if (isDuplicateKey(cusCodeList, "CusCode", code, editingCus.id)) {
       cusEditForm.setError("CusCode", {
         type: "manual",
         message: `CusCode "${values.CusCode.trim()}" は既に存在します。`,
@@ -1098,7 +1114,7 @@ export default function MasterDataPage() {
       toast.success("CusCodeListを更新しました。")
       setEditCusOpen(false)
       setEditingCus(null)
-      await loadData()
+      await reloadAfterMasterDataMutation()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "更新に失敗しました。")
     }
@@ -1111,7 +1127,7 @@ export default function MasterDataPage() {
       toast.success("CusCodeListを削除しました。")
       setDeleteCusOpen(false)
       setEditingCus(null)
-      await loadData()
+      await reloadAfterMasterDataMutation()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "削除に失敗しました。")
     }
@@ -1146,7 +1162,7 @@ export default function MasterDataPage() {
       toast.success("ItemCodeListを作成しました。")
       setNewItemOpen(false)
       itemCreateForm.reset()
-      await loadData()
+      await reloadAfterMasterDataMutation()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "作成に失敗しました。")
     }
@@ -1183,7 +1199,7 @@ export default function MasterDataPage() {
       toast.success("ItemCodeListを更新しました。")
       setEditItemOpen(false)
       setEditingItem(null)
-      await loadData()
+      await reloadAfterMasterDataMutation()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "更新に失敗しました。")
     }
@@ -1196,7 +1212,7 @@ export default function MasterDataPage() {
       toast.success("ItemCodeListを削除しました。")
       setDeleteItemOpen(false)
       setEditingItem(null)
-      await loadData()
+      await reloadAfterMasterDataMutation()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "削除に失敗しました。")
     }
@@ -1220,7 +1236,7 @@ export default function MasterDataPage() {
       toast.success("UnitPriceListを作成しました。")
       setNewUnitPriceOpen(false)
       unitPriceCreateForm.reset()
-      await loadData()
+      await reloadAfterMasterDataMutation()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "作成に失敗しました。")
     }
@@ -1246,7 +1262,7 @@ export default function MasterDataPage() {
       toast.success("UnitPriceListを更新しました。")
       setEditUnitPriceOpen(false)
       setEditingUnitPrice(null)
-      await loadData()
+      await reloadAfterMasterDataMutation()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "更新に失敗しました。")
     }
@@ -1259,7 +1275,7 @@ export default function MasterDataPage() {
       toast.success("UnitPriceListを削除しました。")
       setDeleteUnitPriceOpen(false)
       setEditingUnitPrice(null)
-      await loadData()
+      await reloadAfterMasterDataMutation()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "削除に失敗しました。")
     }
@@ -1284,7 +1300,7 @@ export default function MasterDataPage() {
       toast.success("PIC.WH.CodeListを作成しました。")
       setNewPicWhOpen(false)
       picWhCreateForm.reset()
-      await loadData()
+      await reloadAfterMasterDataMutation()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "作成に失敗しました。")
     }
@@ -1311,7 +1327,7 @@ export default function MasterDataPage() {
       toast.success("PIC.WH.CodeListを更新しました。")
       setEditPicWhOpen(false)
       setEditingPicWh(null)
-      await loadData()
+      await reloadAfterMasterDataMutation()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "更新に失敗しました。")
     }
@@ -1324,7 +1340,7 @@ export default function MasterDataPage() {
       toast.success("PIC.WH.CodeListを削除しました。")
       setDeletePicWhOpen(false)
       setEditingPicWh(null)
-      await loadData()
+      await reloadAfterMasterDataMutation()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "削除に失敗しました。")
     }
@@ -1348,7 +1364,7 @@ export default function MasterDataPage() {
       toast.success("UnitCodeListを作成しました。")
       setNewUnitCodeOpen(false)
       unitCodeCreateForm.reset()
-      await loadData()
+      await reloadAfterMasterDataMutation()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "作成に失敗しました。")
     }
@@ -1374,7 +1390,7 @@ export default function MasterDataPage() {
       toast.success("UnitCodeListを更新しました。")
       setEditUnitCodeOpen(false)
       setEditingUnitCode(null)
-      await loadData()
+      await reloadAfterMasterDataMutation()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "更新に失敗しました。")
     }
@@ -1387,7 +1403,7 @@ export default function MasterDataPage() {
       toast.success("UnitCodeListを削除しました。")
       setDeleteUnitCodeOpen(false)
       setEditingUnitCode(null)
-      await loadData()
+      await reloadAfterMasterDataMutation()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "削除に失敗しました。")
     }

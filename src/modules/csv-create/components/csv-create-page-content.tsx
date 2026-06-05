@@ -64,6 +64,7 @@ import {
   exportRowsToCsv,
   loadMasterDataStore,
   readExcelByMapping,
+  refreshDerivedCsvRows,
   validateCsvRows,
 } from "../services/csv-create-services"
 import type {
@@ -72,6 +73,7 @@ import type {
   CsvValidationIssue,
   CsvWorkingRow,
   ExcelImportResult,
+  MasterDataLookupStore,
 } from "../services/csv-create-types"
 import { getCellKey, getEntryColumns } from "../services/csv-create-types"
 
@@ -170,6 +172,7 @@ function makeExportName(sourceFileName?: string) {
 }
 
 const CSV_SESSION_STORAGE_KEY = "csv-create-working-session"
+const MASTER_DATA_CHANGED_STORAGE_KEY = "master-data:changed-at"
 const MIN_CSV_COLUMN_WIDTH = 72
 const MAX_AUTO_CSV_COLUMN_WIDTH = 280
 const DEFAULT_CSV_COLUMN_WIDTH = 136
@@ -285,6 +288,7 @@ export function CsvCreatePageContent() {
   const [manualValues, setManualValues] = useState<Record<string, string>>(initialSession.manualValues)
   const [sourceFileName, setSourceFileName] = useState(initialSession.sourceFileName)
   const [lastExcel, setLastExcel] = useState<ExcelImportResult | null>(initialSession.lastExcel)
+  const [masterDataStore, setMasterDataStore] = useState<MasterDataLookupStore | null>(null)
   const [isExpanded, setIsExpanded] = useState(false)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(initialSession.hasUnsavedChanges)
 
@@ -372,6 +376,37 @@ export function CsvCreatePageContent() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!sessionOpen || !selectedMapping || !draftRows.length) return
+
+    let refreshing = false
+    const refreshSilently = () => {
+      if (refreshing) return
+      refreshing = true
+      void refreshDerivedValues({ silent: true }).finally(() => {
+        refreshing = false
+      })
+    }
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === MASTER_DATA_CHANGED_STORAGE_KEY) refreshSilently()
+    }
+    const handleFocus = () => refreshSilently()
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") refreshSilently()
+    }
+
+    window.addEventListener("storage", handleStorage)
+    window.addEventListener("focus", handleFocus)
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener("storage", handleStorage)
+      window.removeEventListener("focus", handleFocus)
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+    }
+  }, [draftRows.length, issues, selectedMapping, sessionOpen])
+
   function clearWorkingData(nextSelectedMappingId = selectedMappingId) {
     setSelectedMappingId(nextSelectedMappingId)
     setDisplayMode("full")
@@ -385,6 +420,7 @@ export function CsvCreatePageContent() {
     setManualValues({})
     setSourceFileName("")
     setLastExcel(null)
+    setMasterDataStore(null)
     setIsExpanded(false)
     setHasUnsavedChanges(false)
     if (fileInputRef.current) fileInputRef.current.value = ""
@@ -414,11 +450,36 @@ export function CsvCreatePageContent() {
     toast.info("作業セッションを閉じました。")
   }
 
+  async function refreshDerivedValues(options: { silent?: boolean } = {}) {
+    if (!sessionOpen || !selectedMapping || !draftRows.length) return
+    setProcessing(true)
+    try {
+      const nextMasterData = await loadMasterDataStore()
+      setMasterDataStore(nextMasterData)
+      const refreshed = refreshDerivedCsvRows({
+        rows: draftRows,
+        mapping: selectedMapping,
+        masterData: nextMasterData,
+        existingIssues: issues,
+      })
+      setRows(refreshed.rows)
+      setDraftRows(cloneRows(refreshed.rows))
+      setIssues(refreshed.issues)
+      setHasUnsavedChanges(false)
+      if (!options.silent) toast.success("データを更新しました。")
+    } catch {
+      if (!options.silent) toast.error("データ更新に失敗しました。")
+    } finally {
+      setProcessing(false)
+    }
+  }
+
   async function rebuildWithManualValues(nextManualValues = manualValues) {
     if (!sessionOpen || !selectedMapping || !lastExcel) return
     setProcessing(true)
     try {
       const nextMasterData = await loadMasterDataStore()
+      setMasterDataStore(nextMasterData)
       const result = buildCsvRowsFromMapping({
         mapping: selectedMapping,
         excel: lastExcel,
@@ -459,6 +520,7 @@ export function CsvCreatePageContent() {
         readExcelByMapping(file, selectedMapping),
         loadMasterDataStore(),
       ])
+      setMasterDataStore(nextMasterData)
       const result = buildCsvRowsFromMapping({
         mapping: selectedMapping,
         excel,
@@ -484,8 +546,8 @@ export function CsvCreatePageContent() {
 
   function updateCell(rowId: string, column: CsvColumnLetter, value: string) {
     if (!sessionOpen) return
-    setDraftRows((currentRows) =>
-      currentRows.map((row) => {
+    setDraftRows((currentRows) => {
+      const nextRows = currentRows.map((row) => {
         if (row.id !== rowId) return row
         const currentCell = row.values[column]
         return {
@@ -505,7 +567,17 @@ export function CsvCreatePageContent() {
           },
         }
       })
-    )
+
+      if (!selectedMapping) return nextRows
+      const refreshed = refreshDerivedCsvRows({
+        rows: nextRows,
+        mapping: selectedMapping,
+        masterData: masterDataStore ?? {},
+        existingIssues: issues,
+      })
+      setIssues(refreshed.issues)
+      return refreshed.rows
+    })
     setHasUnsavedChanges(true)
   }
 
