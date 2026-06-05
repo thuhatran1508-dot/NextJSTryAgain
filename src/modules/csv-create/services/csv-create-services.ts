@@ -654,8 +654,11 @@ export function refreshDerivedCsvRows({
       const target = getMasterLookupTarget(entry)
       let shouldReportMissingLookup = true
       if (target) {
-        const currentValue = normalizeText(draft[target]?.value)
-        if (result.found || !currentValue || draft[target]?.source === "masterLookup") {
+        const targetCell = draft[target]
+        const currentValue = normalizeText(targetCell?.value)
+        if (targetCell?.edited) {
+          shouldReportMissingLookup = false
+        } else if (result.found || !currentValue || targetCell?.source === "masterLookup") {
           draft[target] = createCell(entry, target, result.value, "masterLookup")
           formatRowCell(row, target, entry, issues)
         } else {
@@ -682,7 +685,11 @@ export function refreshDerivedCsvRows({
     for (const entry of sortedEntries) {
       if (entry.dataSource !== "formula") continue
       const value = evaluateFormula(entry.formula, row.rowNumber, draft)
-      setCell(draft, entry, value, "formula")
+      const targetColumns = getEntryColumns(entry)
+      targetColumns.forEach((column) => {
+        if (draft[column]?.edited) return
+        draft[column] = createCell(entry, column, value, "formula")
+      })
       if (value === "") {
         issues.push(
           makeIssue({
@@ -696,7 +703,10 @@ export function refreshDerivedCsvRows({
           })
         )
       }
-      entry.targetColumns.forEach((column) => formatRowCell(row, column, entry, issues))
+      targetColumns.forEach((column) => {
+        if (draft[column]?.mappingEntryId !== entry.id || draft[column]?.edited) return
+        formatRowCell(row, column, entry, issues)
+      })
     }
   })
 
