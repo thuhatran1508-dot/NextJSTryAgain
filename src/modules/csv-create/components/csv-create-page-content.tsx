@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import type {
   ClipboardEvent as ReactClipboardEvent,
+  KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
 } from "react"
 import {
@@ -191,6 +192,13 @@ interface CsvCellEdit {
   rowId: string
   column: CsvColumnLetter
   value: string
+}
+
+interface CsvCellSelection {
+  startRowId: string
+  startColumn: CsvColumnLetter
+  endRowId: string
+  endColumn: CsvColumnLetter
 }
 
 interface CsvCreateSessionState {
@@ -1117,6 +1125,8 @@ function CsvWorkingTable({
   onChangeSort: (sortState: CsvSortState | null) => void
   expanded: boolean
 }) {
+  const [selection, setSelection] = useState<CsvCellSelection | null>(null)
+  const selectingRef = useRef(false)
   const visibleTableColumns = useMemo(
     () => columns.filter((column) => !hiddenColumns.includes(column)),
     [columns, hiddenColumns]
@@ -1143,6 +1153,15 @@ function CsvWorkingTable({
       columns.map((column) => [column, getAutoColumnWidth(mapping, rows, column)])
     ) as Partial<Record<CsvColumnLetter, number>>
   }, [columns, mapping, rows])
+
+  useEffect(() => {
+    function stopSelecting() {
+      selectingRef.current = false
+    }
+
+    window.addEventListener("mouseup", stopSelecting)
+    return () => window.removeEventListener("mouseup", stopSelecting)
+  }, [])
 
   function getColumnWidth(column: CsvColumnLetter) {
     return columnWidths[column] ?? autoColumnWidths[column] ?? DEFAULT_CSV_COLUMN_WIDTH
@@ -1217,6 +1236,107 @@ function CsvWorkingTable({
     if (!edits.length) return
     event.preventDefault()
     onPasteCells(edits)
+  }
+
+  function getSelectionBounds(currentSelection = selection) {
+    if (!currentSelection) return null
+    const startRowIndex = sortedRows.findIndex((row) => row.id === currentSelection.startRowId)
+    const endRowIndex = sortedRows.findIndex((row) => row.id === currentSelection.endRowId)
+    const startColumnIndex = effectiveColumns.indexOf(currentSelection.startColumn)
+    const endColumnIndex = effectiveColumns.indexOf(currentSelection.endColumn)
+    if (startRowIndex < 0 || endRowIndex < 0 || startColumnIndex < 0 || endColumnIndex < 0) return null
+
+    return {
+      rowStart: Math.min(startRowIndex, endRowIndex),
+      rowEnd: Math.max(startRowIndex, endRowIndex),
+      columnStart: Math.min(startColumnIndex, endColumnIndex),
+      columnEnd: Math.max(startColumnIndex, endColumnIndex),
+    }
+  }
+
+  function isCellSelected(rowId: string, column: CsvColumnLetter) {
+    const bounds = getSelectionBounds()
+    if (!bounds) return false
+    const rowIndex = sortedRows.findIndex((row) => row.id === rowId)
+    const columnIndex = effectiveColumns.indexOf(column)
+    return (
+      rowIndex >= bounds.rowStart &&
+      rowIndex <= bounds.rowEnd &&
+      columnIndex >= bounds.columnStart &&
+      columnIndex <= bounds.columnEnd
+    )
+  }
+
+  function hasMultiCellSelection() {
+    const bounds = getSelectionBounds()
+    if (!bounds) return false
+    return bounds.rowEnd > bounds.rowStart || bounds.columnEnd > bounds.columnStart
+  }
+
+  function getSelectedText() {
+    const bounds = getSelectionBounds()
+    if (!bounds) return ""
+
+    const lines: string[] = []
+    for (let rowIndex = bounds.rowStart; rowIndex <= bounds.rowEnd; rowIndex += 1) {
+      const row = sortedRows[rowIndex]
+      const values: string[] = []
+      for (let columnIndex = bounds.columnStart; columnIndex <= bounds.columnEnd; columnIndex += 1) {
+        const column = effectiveColumns[columnIndex]
+        values.push(row.values[column]?.value ?? "")
+      }
+      lines.push(values.join("\t"))
+    }
+    return lines.join("\n")
+  }
+
+  function getSelectedClearEdits() {
+    const bounds = getSelectionBounds()
+    if (!bounds) return []
+
+    const edits: CsvCellEdit[] = []
+    for (let rowIndex = bounds.rowStart; rowIndex <= bounds.rowEnd; rowIndex += 1) {
+      const row = sortedRows[rowIndex]
+      for (let columnIndex = bounds.columnStart; columnIndex <= bounds.columnEnd; columnIndex += 1) {
+        const column = effectiveColumns[columnIndex]
+        edits.push({ rowId: row.id, column, value: "" })
+      }
+    }
+    return edits
+  }
+
+  function startCellSelection(rowId: string, column: CsvColumnLetter) {
+    selectingRef.current = true
+    setSelection({ startRowId: rowId, startColumn: column, endRowId: rowId, endColumn: column })
+  }
+
+  function extendCellSelection(rowId: string, column: CsvColumnLetter) {
+    if (!selectingRef.current) return
+    setSelection((currentSelection) =>
+      currentSelection
+        ? { ...currentSelection, endRowId: rowId, endColumn: column }
+        : { startRowId: rowId, startColumn: column, endRowId: rowId, endColumn: column }
+    )
+  }
+
+  function handleCopy(event: ReactClipboardEvent<HTMLInputElement>) {
+    if (!selection || !hasMultiCellSelection()) return
+    event.preventDefault()
+    event.clipboardData.setData("text/plain", getSelectedText())
+  }
+
+  function handleCut(event: ReactClipboardEvent<HTMLInputElement>) {
+    if (!selection || !hasMultiCellSelection()) return
+    event.preventDefault()
+    event.clipboardData.setData("text/plain", getSelectedText())
+    onPasteCells(getSelectedClearEdits())
+  }
+
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (!hasMultiCellSelection()) return
+    if (event.key !== "Delete" && event.key !== "Backspace") return
+    event.preventDefault()
+    onPasteCells(getSelectedClearEdits())
   }
 
   return (
@@ -1315,6 +1435,7 @@ function CsvWorkingTable({
                 const cellValue = cell?.value ?? ""
                 const cellIssues = issueByCell.get(getCellKey(row.id, column)) ?? []
                 const hasIssue = cellIssues.length > 0
+                const selected = isCellSelected(row.id, column)
                 const columnWidth = getColumnWidth(column)
                 const showFullValue = shouldShowCellTooltip(cellValue, columnWidth)
                 const input = (
@@ -1322,8 +1443,19 @@ function CsvWorkingTable({
                     value={cellValue}
                     onChange={(event) => onChangeCell(row.id, column, event.target.value)}
                     onBlur={(event) => onCommitCell(row.id, column, event.target.value)}
+                    onFocus={() =>
+                      setSelection({
+                        startRowId: row.id,
+                        startColumn: column,
+                        endRowId: row.id,
+                        endColumn: column,
+                      })
+                    }
+                    onCopy={handleCopy}
+                    onCut={handleCut}
+                    onKeyDown={handleKeyDown}
                     onPaste={(event) => handlePaste(event, row.id, column)}
-                    className="h-9 w-full truncate bg-transparent px-3 text-sm outline-none focus:bg-background focus:ring-2 focus:ring-ring"
+                    className="h-9 w-full truncate bg-transparent px-3 text-sm outline-none focus:bg-background"
                     aria-label={`${getColumnLabel(mapping, column)} ${row.rowNumber}行`}
                   />
                 )
@@ -1334,9 +1466,12 @@ function CsvWorkingTable({
                       "border-b border-r p-0",
                       hasIssue ? "bg-amber-100/70 dark:bg-amber-950/40" : "",
                       cell?.edited ? "bg-sky-50 dark:bg-sky-950/30" : "",
+                      selected ? "relative bg-sky-100 outline outline-2 -outline-offset-2 outline-sky-500 dark:bg-sky-950/50" : "",
                     ].join(" ")}
                     style={{ width: columnWidth, minWidth: MIN_CSV_COLUMN_WIDTH }}
                     title={cellIssues.map((issue) => issue.message).join("\n")}
+                    onMouseDown={() => startCellSelection(row.id, column)}
+                    onMouseEnter={() => extendCellSelection(row.id, column)}
                   >
                     {showFullValue ? (
                       <Tooltip>
