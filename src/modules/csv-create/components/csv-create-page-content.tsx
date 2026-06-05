@@ -6,7 +6,9 @@ import {
   Download,
   Eye,
   EyeOff,
+  FilePlus2,
   FileSpreadsheet,
+  LogOut,
   Maximize2,
   Plus,
   RefreshCw,
@@ -143,22 +145,102 @@ function makeExportName(sourceFileName?: string) {
   return `${baseName}-${stamp}.csv`
 }
 
+const CSV_SESSION_STORAGE_KEY = "csv-create-working-session"
+
+interface CsvCreateSessionState {
+  sessionOpen: boolean
+  sessionId: string
+  selectedMappingId: string
+  displayMode: CsvDisplayMode
+  rows: CsvWorkingRow[]
+  draftRows: CsvWorkingRow[]
+  issues: CsvValidationIssue[]
+  manualInputs: CsvManualInput[]
+  manualValues: Record<string, string>
+  sourceFileName: string
+  lastExcel: ExcelImportResult | null
+  hasUnsavedChanges: boolean
+}
+
+function getEmptySessionState(selectedMappingId = ""): CsvCreateSessionState {
+  return {
+    sessionOpen: false,
+    sessionId: "",
+    selectedMappingId,
+    displayMode: "full",
+    rows: [],
+    draftRows: [],
+    issues: [],
+    manualInputs: [],
+    manualValues: {},
+    sourceFileName: "",
+    lastExcel: null,
+    hasUnsavedChanges: false,
+  }
+}
+
+function createSessionId() {
+  return `csv-session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function loadStoredSessionState() {
+  if (typeof window === "undefined") return getEmptySessionState()
+
+  try {
+    const stored = window.sessionStorage.getItem(CSV_SESSION_STORAGE_KEY)
+    if (!stored) return getEmptySessionState()
+
+    const parsed = JSON.parse(stored) as Partial<CsvCreateSessionState>
+    if (!parsed.sessionOpen || !parsed.sessionId) return getEmptySessionState()
+
+    return {
+      ...getEmptySessionState(),
+      ...parsed,
+      sessionOpen: true,
+      rows: parsed.rows ?? [],
+      draftRows: parsed.draftRows ?? [],
+      issues: parsed.issues ?? [],
+      manualInputs: parsed.manualInputs ?? [],
+      manualValues: parsed.manualValues ?? {},
+      lastExcel: parsed.lastExcel ?? null,
+    }
+  } catch {
+    return getEmptySessionState()
+  }
+}
+
+function storeSessionState(state: CsvCreateSessionState) {
+  if (typeof window === "undefined") return
+
+  if (!state.sessionOpen) {
+    window.sessionStorage.removeItem(CSV_SESSION_STORAGE_KEY)
+    return
+  }
+
+  window.sessionStorage.setItem(CSV_SESSION_STORAGE_KEY, JSON.stringify(state))
+}
+
 export function CsvCreatePageContent() {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const initialSessionRef = useRef<CsvCreateSessionState | null>(null)
+  if (!initialSessionRef.current) initialSessionRef.current = loadStoredSessionState()
+  const initialSession = initialSessionRef.current
   const [mappings, setMappings] = useState<ImportMappingConfig[]>([])
-  const [selectedMappingId, setSelectedMappingId] = useState("")
+  const [sessionOpen, setSessionOpen] = useState(initialSession.sessionOpen)
+  const [sessionId, setSessionId] = useState(initialSession.sessionId)
+  const [selectedMappingId, setSelectedMappingId] = useState(initialSession.selectedMappingId)
   const [mappingLoading, setMappingLoading] = useState(true)
   const [processing, setProcessing] = useState(false)
-  const [displayMode, setDisplayMode] = useState<CsvDisplayMode>("full")
-  const [rows, setRows] = useState<CsvWorkingRow[]>([])
-  const [draftRows, setDraftRows] = useState<CsvWorkingRow[]>([])
-  const [issues, setIssues] = useState<CsvValidationIssue[]>([])
-  const [manualInputs, setManualInputs] = useState<CsvManualInput[]>([])
-  const [manualValues, setManualValues] = useState<Record<string, string>>({})
-  const [sourceFileName, setSourceFileName] = useState("")
-  const [lastExcel, setLastExcel] = useState<ExcelImportResult | null>(null)
+  const [displayMode, setDisplayMode] = useState<CsvDisplayMode>(initialSession.displayMode)
+  const [rows, setRows] = useState<CsvWorkingRow[]>(initialSession.rows)
+  const [draftRows, setDraftRows] = useState<CsvWorkingRow[]>(initialSession.draftRows)
+  const [issues, setIssues] = useState<CsvValidationIssue[]>(initialSession.issues)
+  const [manualInputs, setManualInputs] = useState<CsvManualInput[]>(initialSession.manualInputs)
+  const [manualValues, setManualValues] = useState<Record<string, string>>(initialSession.manualValues)
+  const [sourceFileName, setSourceFileName] = useState(initialSession.sourceFileName)
+  const [lastExcel, setLastExcel] = useState<ExcelImportResult | null>(initialSession.lastExcel)
   const [isExpanded, setIsExpanded] = useState(false)
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(initialSession.hasUnsavedChanges)
 
   const selectedMapping = useMemo(
     () => mappings.find((mapping) => mapping.id === selectedMappingId) ?? null,
@@ -180,6 +262,36 @@ export function CsvCreatePageContent() {
   }, [issues])
 
   useEffect(() => {
+    storeSessionState({
+      sessionOpen,
+      sessionId,
+      selectedMappingId,
+      displayMode,
+      rows,
+      draftRows,
+      issues,
+      manualInputs,
+      manualValues,
+      sourceFileName,
+      lastExcel,
+      hasUnsavedChanges,
+    })
+  }, [
+    sessionOpen,
+    sessionId,
+    selectedMappingId,
+    displayMode,
+    rows,
+    draftRows,
+    issues,
+    manualInputs,
+    manualValues,
+    sourceFileName,
+    lastExcel,
+    hasUnsavedChanges,
+  ])
+
+  useEffect(() => {
     let mounted = true
     setMappingLoading(true)
     mappingConfigRepository
@@ -188,7 +300,7 @@ export function CsvCreatePageContent() {
         if (!mounted) return
         setMappings(items)
         const firstUsable = items.find(isMappingUsable)
-        if (firstUsable) setSelectedMappingId(firstUsable.id)
+        if (firstUsable) setSelectedMappingId((currentId) => currentId || firstUsable.id)
       })
       .catch(() => toast.error("マッピングを読み込めませんでした。"))
       .finally(() => {
@@ -200,8 +312,47 @@ export function CsvCreatePageContent() {
     }
   }, [])
 
+  function clearWorkingData(nextSelectedMappingId = selectedMappingId) {
+    setSelectedMappingId(nextSelectedMappingId)
+    setDisplayMode("full")
+    setRows([])
+    setDraftRows([])
+    setIssues([])
+    setManualInputs([])
+    setManualValues({})
+    setSourceFileName("")
+    setLastExcel(null)
+    setIsExpanded(false)
+    setHasUnsavedChanges(false)
+    if (fileInputRef.current) fileInputRef.current.value = ""
+  }
+
+  function startNewSession() {
+    if (sessionOpen) {
+      toast.info("現在の作業セッションを閉じてから新規セッションを開始してください。")
+      return
+    }
+
+    const firstUsable = mappings.find(isMappingUsable)
+    setSessionOpen(true)
+    setSessionId(createSessionId())
+    clearWorkingData(selectedMappingId || firstUsable?.id || "")
+    toast.success("新しい作業セッションを開始しました。")
+  }
+
+  function closeCurrentSession() {
+    if (!sessionOpen) return
+    const shouldClose = window.confirm("現在の作業セッションを閉じますか。作業中のデータは破棄されます。")
+    if (!shouldClose) return
+
+    setSessionOpen(false)
+    setSessionId("")
+    clearWorkingData(selectedMappingId)
+    toast.info("作業セッションを閉じました。")
+  }
+
   async function rebuildWithManualValues(nextManualValues = manualValues) {
-    if (!selectedMapping || !lastExcel) return
+    if (!sessionOpen || !selectedMapping || !lastExcel) return
     setProcessing(true)
     try {
       const nextMasterData = await loadMasterDataStore()
@@ -226,6 +377,10 @@ export function CsvCreatePageContent() {
   }
 
   async function handleFile(file: File) {
+    if (!sessionOpen) {
+      toast.error("先に新規セッションを開始してください。")
+      return
+    }
     if (!selectedMapping) {
       toast.error("マッピングを選択してください。")
       return
@@ -265,6 +420,7 @@ export function CsvCreatePageContent() {
   }
 
   function updateCell(rowId: string, column: CsvColumnLetter, value: string) {
+    if (!sessionOpen) return
     setDraftRows((currentRows) =>
       currentRows.map((row) => {
         if (row.id !== rowId) return row
@@ -291,6 +447,7 @@ export function CsvCreatePageContent() {
   }
 
   function saveEdits() {
+    if (!sessionOpen) return
     const nextRows = cloneRows(draftRows)
     const cleanedIssues = removeResolvedCellIssues(nextRows, issues)
     const nextIssues = validateCsvRows(nextRows, cleanedIssues)
@@ -302,12 +459,17 @@ export function CsvCreatePageContent() {
   }
 
   function discardEdits() {
+    if (!sessionOpen) return
     setDraftRows(cloneRows(rows))
     setHasUnsavedChanges(false)
     toast.info("変更を破棄しました。")
   }
 
   function exportCsv() {
+    if (!sessionOpen) {
+      toast.error("先に新規セッションを開始してください。")
+      return
+    }
     if (!selectedMapping || !rows.length) {
       toast.error("エクスポートするデータがありません。")
       return
@@ -329,6 +491,7 @@ export function CsvCreatePageContent() {
   }
 
   async function addMissingMasterData(issue: CsvValidationIssue) {
+    if (!sessionOpen) return
     if (!issue.missingMasterDataType || !issue.sourceValue) return
     const shouldAdd = window.confirm(
       `${issue.missingMasterDataType} に「${issue.sourceValue}」を追加しますか。`
@@ -366,11 +529,19 @@ export function CsvCreatePageContent() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" onClick={startNewSession} disabled={sessionOpen || mappingLoading || processing}>
+            <FilePlus2 className="size-4" />
+            新規セッション
+          </Button>
+          <Button type="button" variant="outline" onClick={closeCurrentSession} disabled={!sessionOpen || processing}>
+            <LogOut className="size-4" />
+            セッション終了
+          </Button>
           <Button
             type="button"
             variant={displayMode === "compact" ? "default" : "outline"}
             onClick={() => setDisplayMode("compact")}
-            disabled={!rows.length}
+            disabled={!sessionOpen || !rows.length}
           >
             <EyeOff className="size-4" />
             簡易表示
@@ -379,24 +550,24 @@ export function CsvCreatePageContent() {
             type="button"
             variant={displayMode === "full" ? "default" : "outline"}
             onClick={() => setDisplayMode("full")}
-            disabled={!rows.length}
+            disabled={!sessionOpen || !rows.length}
           >
             <Eye className="size-4" />
             全項目表示
           </Button>
-          <Button type="button" variant="outline" onClick={() => setIsExpanded(true)} disabled={!rows.length}>
+          <Button type="button" variant="outline" onClick={() => setIsExpanded(true)} disabled={!sessionOpen || !rows.length}>
             <Maximize2 className="size-4" />
             大きく表示
           </Button>
-          <Button type="button" variant="outline" onClick={discardEdits} disabled={!hasUnsavedChanges}>
+          <Button type="button" variant="outline" onClick={discardEdits} disabled={!sessionOpen || !hasUnsavedChanges}>
             <X className="size-4" />
             変更を破棄
           </Button>
-          <Button type="button" onClick={saveEdits} disabled={!hasUnsavedChanges}>
+          <Button type="button" onClick={saveEdits} disabled={!sessionOpen || !hasUnsavedChanges}>
             <Save className="size-4" />
             保存
           </Button>
-          <Button type="button" onClick={exportCsv} disabled={!rows.length}>
+          <Button type="button" onClick={exportCsv} disabled={!sessionOpen || !rows.length}>
             <Download className="size-4" />
             CSV出力
           </Button>
@@ -409,6 +580,7 @@ export function CsvCreatePageContent() {
           <Select
             value={selectedMappingId}
             onValueChange={(value) => {
+              if (!sessionOpen) return
               if (hasUnsavedChanges) {
                 const shouldChange = window.confirm("未保存の変更を破棄してマッピングを変更しますか。")
                 if (!shouldChange) return
@@ -421,7 +593,7 @@ export function CsvCreatePageContent() {
               setSourceFileName("")
               setHasUnsavedChanges(false)
             }}
-            disabled={mappingLoading || processing}
+            disabled={!sessionOpen || mappingLoading || processing}
           >
             <SelectTrigger>
               <SelectValue placeholder="マッピングを選択" />
@@ -448,14 +620,14 @@ export function CsvCreatePageContent() {
                 const file = event.target.files?.[0]
                 if (file) void handleFile(file)
               }}
-              disabled={!selectedMapping || processing}
+              disabled={!sessionOpen || !selectedMapping || processing}
               className="max-w-xl"
             />
-            <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={processing}>
+            <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={!sessionOpen || processing}>
               <Upload className="size-4" />
               アップロード
             </Button>
-            <Button type="button" variant="outline" onClick={() => void rebuildWithManualValues()} disabled={!lastExcel || processing}>
+            <Button type="button" variant="outline" onClick={() => void rebuildWithManualValues()} disabled={!sessionOpen || !lastExcel || processing}>
               <RefreshCw className="size-4" />
               再処理
             </Button>
@@ -478,6 +650,7 @@ export function CsvCreatePageContent() {
                   setManualValues(nextValues)
                 }}
                 onBlur={() => void rebuildWithManualValues()}
+                disabled={!sessionOpen || processing}
                 placeholder="値を入力"
               />
             </div>
@@ -486,6 +659,7 @@ export function CsvCreatePageContent() {
       ) : null}
 
       <StatusPanel
+        sessionOpen={sessionOpen}
         sourceFileName={sourceFileName}
         rowCount={rows.length}
         summary={issueSummary}
@@ -546,18 +720,21 @@ export function CsvCreatePageContent() {
 }
 
 function StatusPanel({
+  sessionOpen,
   sourceFileName,
   rowCount,
   summary,
   processing,
 }: {
+  sessionOpen: boolean
   sourceFileName: string
   rowCount: number
   summary: ReturnType<typeof getIssueSummary>
   processing: boolean
 }) {
   return (
-    <div className="grid gap-2 rounded-md border bg-background p-4 text-sm md:grid-cols-5">
+    <div className="grid gap-2 rounded-md border bg-background p-4 text-sm md:grid-cols-6">
+      <StatusItem label="セッション" value={sessionOpen ? "作業中" : "未開始"} />
       <StatusItem label="ファイル" value={sourceFileName || "-"} />
       <StatusItem label="行数" value={rowCount ? `${rowCount}行` : "-"} />
       <StatusItem label="警告" value={`${summary.total}件`} />
