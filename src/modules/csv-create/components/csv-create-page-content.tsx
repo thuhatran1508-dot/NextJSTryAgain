@@ -652,16 +652,16 @@ export function CsvCreatePageContent() {
     setHasUnsavedChanges(true)
   }
 
-  function maybeFillFixedCellColumn(rowId: string, column: CsvColumnLetter, value: string) {
+  function maybeFillStaticColumn(rowId: string, column: CsvColumnLetter, value: string) {
     if (!selectedMapping || !sessionOpen) return
     const editedCell = draftRows.find((row) => row.id === rowId)?.values[column]
     if (!editedCell?.edited) return
     const entry = getColumnEntry(selectedMapping, column)
-    const isFixedCellColumn =
-      entry?.dataSource === "orderFile" &&
-      entry.orderFileMode === "fixedCell" &&
-      getEntryColumns(entry).includes(column)
-    if (!isFixedCellColumn) return
+    if (!entry || !getEntryColumns(entry).includes(column)) return
+    const isStaticColumn =
+      entry.dataSource === "fixedValue" ||
+      (entry.dataSource === "orderFile" && entry.orderFileMode === "fixedCell")
+    if (!isStaticColumn) return
 
     const shouldFill = window.confirm("同じ値をこの列の残りすべての行に入力しますか。")
     if (!shouldFill) return
@@ -779,7 +779,7 @@ export function CsvCreatePageContent() {
       issueByCell={issueByCell}
       onChangeCell={updateCell}
       onPasteCells={applyCellEdits}
-      onCommitCell={maybeFillFixedCellColumn}
+      onCommitCell={maybeFillStaticColumn}
       onChangeColumnWidth={(column, width) => {
         setColumnWidths((currentWidths) => ({ ...currentWidths, [column]: width }))
       }}
