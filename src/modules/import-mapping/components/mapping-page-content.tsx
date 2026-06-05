@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -808,6 +809,13 @@ function MappingEntryRow({
         <EntryDetailFields entry={entry} issues={issues} onChange={onChange} />
       </div>
       <div className="col-span-3 flex flex-wrap items-center gap-2 p-3 pt-0">
+        <label className="flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm">
+          <Checkbox
+            checked={Boolean(entry.hideInCompactView)}
+            onCheckedChange={(checked) => onChange({ hideInCompactView: checked === true })}
+          />
+          <span>簡易表示で非表示</span>
+        </label>
         <Button type="button" size="sm" variant="outline" onClick={onAddBelow}>
           <Plus className="size-4" />
           下に追加
