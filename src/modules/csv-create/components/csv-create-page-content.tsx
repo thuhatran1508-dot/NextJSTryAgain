@@ -546,38 +546,39 @@ export function CsvCreatePageContent() {
 
   function updateCell(rowId: string, column: CsvColumnLetter, value: string) {
     if (!sessionOpen) return
-    setDraftRows((currentRows) => {
-      const nextRows = currentRows.map((row) => {
-        if (row.id !== rowId) return row
-        const currentCell = row.values[column]
-        return {
-          ...row,
-          values: {
-            ...row.values,
-            [column]: {
-              column,
-              columnName: currentCell?.columnName ?? column,
-              value,
-              rawValue: value,
-              source: currentCell?.source ?? "manualInput",
-              mappingEntryId: currentCell?.mappingEntryId,
-              edited: true,
-              issueTypes: currentCell?.issueTypes,
-            },
+    const nextRows = draftRows.map((row) => {
+      if (row.id !== rowId) return row
+      const currentCell = row.values[column]
+      return {
+        ...row,
+        values: {
+          ...row.values,
+          [column]: {
+            column,
+            columnName: currentCell?.columnName ?? column,
+            value,
+            rawValue: value,
+            source: currentCell?.source ?? "manualInput",
+            mappingEntryId: currentCell?.mappingEntryId,
+            edited: true,
+            issueTypes: currentCell?.issueTypes,
           },
-        }
-      })
+        },
+      }
+    })
 
-      if (!selectedMapping) return nextRows
+    if (selectedMapping) {
       const refreshed = refreshDerivedCsvRows({
         rows: nextRows,
         mapping: selectedMapping,
         masterData: masterDataStore ?? {},
         existingIssues: issues,
       })
+      setDraftRows(refreshed.rows)
       setIssues(refreshed.issues)
-      return refreshed.rows
-    })
+    } else {
+      setDraftRows(nextRows)
+    }
     setHasUnsavedChanges(true)
   }
 
