@@ -4,6 +4,13 @@ import {
   createFirestoreCrudService,
   makeSafeDocumentId,
 } from "@/lib/firebase/firestore-crud-service"
+import {
+  collection,
+  deleteField,
+  getDocs,
+  writeBatch,
+  type DocumentData,
+} from "firebase/firestore"
 import type { MasterCollectionConfig } from "@/types/firestore-models"
 
 export type CusCodeListItem = {
@@ -138,6 +145,75 @@ export async function deleteDynamicMasterDataRecord(
 ) {
   const service = createFirestoreCrudService<DynamicMasterDataRecord>(config.collectionName)
   return service.delete(id)
+}
+
+export async function deleteAllDynamicMasterDataRecords(config: MasterCollectionConfig) {
+  const db = getFirestoreSafe()
+  if (!db) {
+    throw new Error(
+      "Firebase is not configured. Please set NEXT_PUBLIC_FIREBASE_* environment variables."
+    )
+  }
+
+  const snapshot = await getDocs(collection(db, config.collectionName))
+  const documents = snapshot.docs
+  for (let index = 0; index < documents.length; index += 450) {
+    const batch = writeBatch(db)
+    documents.slice(index, index + 450).forEach((document) => {
+      batch.delete(document.ref)
+    })
+    await batch.commit()
+  }
+
+  return documents.length
+}
+
+export async function applyDynamicMasterFieldChanges(
+  config: MasterCollectionConfig,
+  previousFields: string[],
+  nextFields: string[]
+) {
+  const db = getFirestoreSafe()
+  if (!db) {
+    throw new Error(
+      "Firebase is not configured. Please set NEXT_PUBLIC_FIREBASE_* environment variables."
+    )
+  }
+
+  const deletedFields = previousFields.filter((field) => !nextFields.includes(field))
+  const renamedFields = previousFields
+    .map((field, index) => ({ from: field, to: nextFields[index] }))
+    .filter(({ from, to }) => {
+      return Boolean(to) && from !== to && !nextFields.includes(from) && !previousFields.includes(to)
+    })
+
+  if (!deletedFields.length && !renamedFields.length) return
+
+  const snapshot = await getDocs(collection(db, config.collectionName))
+  const documents = snapshot.docs
+
+  for (let index = 0; index < documents.length; index += 450) {
+    const batch = writeBatch(db)
+    documents.slice(index, index + 450).forEach((document) => {
+      const data = document.data() as Record<string, unknown>
+      const patch: DocumentData = {}
+
+      renamedFields.forEach(({ from, to }) => {
+        if (!to) return
+        if (Object.prototype.hasOwnProperty.call(data, from)) {
+          patch[to] = data[from]
+        }
+        patch[from] = deleteField()
+      })
+
+      deletedFields.forEach((field) => {
+        patch[field] = deleteField()
+      })
+
+      batch.update(document.ref, patch)
+    })
+    await batch.commit()
+  }
 }
 
 const cusCodeCrud = createFirestoreCrudService<CusCodeListItem>("CusCodeList")

@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Pencil, Plus, Search, Trash2 } from "lucide-react"
+import { ArrowDown, ArrowUp, Pencil, Plus, Search, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import * as XLSX from "xlsx"
 
@@ -42,7 +42,9 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import {
+  applyDynamicMasterFieldChanges,
   createDynamicMasterDataRecord,
+  deleteAllDynamicMasterDataRecords,
   deleteDynamicMasterDataRecord,
   getDynamicMasterData,
   type DynamicMasterDataRecord,
@@ -71,8 +73,8 @@ function normalizeSearchText(value: unknown) {
   return normalizeText(value).toLowerCase()
 }
 
-function parseFieldList(value: string) {
-  return [...new Set(value.split(/[\n,]+/).map((field) => field.trim()).filter(Boolean))]
+function normalizeFieldList(fields: string[]) {
+  return [...new Set(fields.map((field) => field.trim()).filter(Boolean))]
 }
 
 function makeEmptyRecord(config: MasterCollectionConfig): DynamicMasterDataRecord {
@@ -145,13 +147,14 @@ export default function MasterDataPage() {
   const [configDraft, setConfigDraft] = useState({
     collectionName: "",
     displayName: "",
-    fields: "",
+    fields: [""],
   })
   const [recordDialogOpen, setRecordDialogOpen] = useState(false)
   const [recordDialogMode, setRecordDialogMode] = useState<RecordDialogMode>("create")
   const [recordDraft, setRecordDraft] = useState<DynamicMasterDataRecord>({})
   const [editingRecordId, setEditingRecordId] = useState("")
   const [deleteTarget, setDeleteTarget] = useState<DynamicMasterDataRecord | null>(null)
+  const [deleteAllTarget, setDeleteAllTarget] = useState<MasterCollectionConfig | null>(null)
   const importInputRef = useRef<HTMLInputElement | null>(null)
 
   const activeConfig = useMemo(
@@ -200,7 +203,7 @@ export default function MasterDataPage() {
     setConfigDraft({
       collectionName: "",
       displayName: "",
-      fields: "",
+      fields: [""],
     })
     setConfigDialogOpen(true)
   }
@@ -210,13 +213,13 @@ export default function MasterDataPage() {
     setConfigDraft({
       collectionName: config.collectionName,
       displayName: config.displayName,
-      fields: config.fields.join("\n"),
+      fields: [...config.fields],
     })
     setConfigDialogOpen(true)
   }
 
   async function saveConfig() {
-    const fields = parseFieldList(configDraft.fields)
+    const fields = normalizeFieldList(configDraft.fields)
     const collectionName = configDraft.collectionName.trim()
     if (!collectionName || !fields.length) {
       toast.error("データリストIDとフィールドを入力してください。")
@@ -235,6 +238,9 @@ export default function MasterDataPage() {
           systemDefault: editingConfig?.systemDefault,
         })
       )
+      if (editingConfig) {
+        await applyDynamicMasterFieldChanges(saved, editingConfig.fields, fields)
+      }
       setConfigDialogOpen(false)
       setActiveCollection(saved.collectionName)
       await loadData()
@@ -265,6 +271,41 @@ export default function MasterDataPage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  function updateConfigField(index: number, value: string) {
+    setConfigDraft((current) => ({
+      ...current,
+      fields: current.fields.map((field, fieldIndex) => (fieldIndex === index ? value : field)),
+    }))
+  }
+
+  function addConfigField() {
+    setConfigDraft((current) => ({
+      ...current,
+      fields: [...current.fields, ""],
+    }))
+  }
+
+  function removeConfigField(index: number) {
+    setConfigDraft((current) => ({
+      ...current,
+      fields: current.fields.filter((_, fieldIndex) => fieldIndex !== index),
+    }))
+  }
+
+  function moveConfigField(index: number, direction: -1 | 1) {
+    setConfigDraft((current) => {
+      const nextIndex = index + direction
+      if (nextIndex < 0 || nextIndex >= current.fields.length) return current
+      const fields = [...current.fields]
+      const [field] = fields.splice(index, 1)
+      fields.splice(nextIndex, 0, field)
+      return {
+        ...current,
+        fields,
+      }
+    })
   }
 
   function openCreateRecordDialog(config: MasterCollectionConfig) {
@@ -324,6 +365,22 @@ export default function MasterDataPage() {
       setDeleteTarget(null)
       await loadData()
       toast.success("マスタデータを削除しました。")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "削除に失敗しました。")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function deleteAllRecords() {
+    if (!deleteAllTarget) return
+    setSaving(true)
+    try {
+      const deletedCount = await deleteAllDynamicMasterDataRecords(deleteAllTarget)
+      notifyMasterDataChanged()
+      setDeleteAllTarget(null)
+      await loadData()
+      toast.success(`${deletedCount} 件のデータを削除しました。`)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "削除に失敗しました。")
     } finally {
@@ -419,6 +476,16 @@ export default function MasterDataPage() {
                       >
                         <Pencil className="size-4" />
                         設定
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => setDeleteAllTarget(config)}
+                        disabled={!rows.length || saving}
+                      >
+                        <Trash2 className="size-4" />
+                        全データ削除
                       </Button>
                       <Button
                         type="button"
@@ -595,14 +662,50 @@ export default function MasterDataPage() {
             </div>
             <div className="grid gap-2">
               <Label>フィールド</Label>
-              <textarea
-                value={configDraft.fields}
-                onChange={(event) =>
-                  setConfigDraft((current) => ({ ...current, fields: event.target.value }))
-                }
-                className="min-h-32 rounded-md border bg-background px-3 py-2 text-sm"
-                placeholder={"MAVCode\nMHBCode\nIzuyoshiJPCode"}
-              />
+              <div className="grid gap-2">
+                {configDraft.fields.map((field, index) => (
+                  <div key={`${index}-${field}`} className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                    <Input
+                      value={field}
+                      onChange={(event) => updateConfigField(index, event.target.value)}
+                      placeholder={index === 0 ? "キー項目" : "フィールド名"}
+                    />
+                    <div className="flex gap-1">
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="outline"
+                        onClick={() => moveConfigField(index, -1)}
+                        disabled={index === 0}
+                      >
+                        <ArrowUp className="size-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="outline"
+                        onClick={() => moveConfigField(index, 1)}
+                        disabled={index === configDraft.fields.length - 1}
+                      >
+                        <ArrowDown className="size-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="outline"
+                        onClick={() => removeConfigField(index)}
+                        disabled={configDraft.fields.length <= 1}
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <Button type="button" variant="outline" onClick={addConfigField}>
+                <Plus className="size-4" />
+                フィールド追加
+              </Button>
             </div>
           </div>
           <DialogFooter className="gap-2 sm:justify-between">
@@ -689,6 +792,24 @@ export default function MasterDataPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>キャンセル</AlertDialogCancel>
             <AlertDialogAction onClick={deleteConfig}>削除</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={Boolean(deleteAllTarget)}
+        onOpenChange={(open) => !open && setDeleteAllTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>全データを削除しますか。</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteAllTarget?.displayName ?? "選択中のデータリスト"} に登録されている全データを削除します。この操作は元に戻せません。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction onClick={deleteAllRecords}>全データ削除</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
