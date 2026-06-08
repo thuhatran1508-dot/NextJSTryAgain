@@ -1426,6 +1426,7 @@ function CsvWorkingTable({
 }) {
   const [selection, setSelection] = useState<CsvCellSelection | null>(null)
   const selectingRef = useRef(false)
+  const cellInputRefs = useRef(new Map<string, HTMLInputElement>())
   const visibleTableColumns = useMemo(
     () => columns.filter((column) => !hiddenColumns.includes(column)),
     [columns, hiddenColumns]
@@ -1636,9 +1637,14 @@ function CsvWorkingTable({
     const nextColumn = effectiveColumns[columnIndex]
     if (!nextRow || !nextColumn) return
 
+    setSelection({
+      startRowId: nextRow.id,
+      startColumn: nextColumn,
+      endRowId: nextRow.id,
+      endColumn: nextColumn,
+    })
     window.requestAnimationFrame(() => {
-      const selector = `[data-csv-cell="${CSS.escape(getCellKey(nextRow.id, nextColumn))}"]`
-      const input = document.querySelector<HTMLInputElement>(selector)
+      const input = cellInputRefs.current.get(getCellKey(nextRow.id, nextColumn))
       input?.focus()
       input?.select()
     })
@@ -1781,8 +1787,16 @@ function CsvWorkingTable({
                 const selected = isCellSelected(row.id, column)
                 const columnWidth = getColumnWidth(column)
                 const showFullValue = shouldShowCellTooltip(cellValue, columnWidth)
+                const cellKey = getCellKey(row.id, column)
                 const input = (
                   <input
+                    ref={(element) => {
+                      if (element) {
+                        cellInputRefs.current.set(cellKey, element)
+                      } else {
+                        cellInputRefs.current.delete(cellKey)
+                      }
+                    }}
                     value={cellValue}
                     onChange={(event) => onChangeCell(row.id, column, event.target.value)}
                     onBlur={(event) => onCommitCell(row.id, column, event.target.value)}
@@ -1798,7 +1812,6 @@ function CsvWorkingTable({
                     onCut={handleCut}
                     onKeyDown={(event) => handleKeyDown(event, row.id, column)}
                     onPaste={(event) => handlePaste(event, row.id, column)}
-                    data-csv-cell={getCellKey(row.id, column)}
                     className="h-9 w-full truncate bg-transparent px-3 text-sm outline-none focus:bg-background"
                     aria-label={`${getColumnLabel(mapping, column)} ${row.rowNumber}行`}
                   />
