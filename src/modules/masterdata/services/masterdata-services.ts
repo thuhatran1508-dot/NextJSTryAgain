@@ -10,6 +10,8 @@ import {
   doc,
   getDoc,
   getDocs,
+  query,
+  where,
   writeBatch,
   type DocumentData,
 } from "firebase/firestore"
@@ -63,6 +65,7 @@ const emptyItemCodeData: ItemCodeListItem[] = []
 const emptyUnitPriceData: UnitPriceListItem[] = []
 const emptyPicWhData: PICWHCodeListItem[] = []
 const emptyUnitCodeData: UnitCodeListItem[] = []
+const DUPLICATE_DOCUMENT_ID_SEPARATOR = "__"
 
 export async function getCusCodeList(): Promise<CusCodeListItem[]> {
   return getFirestoreCollection<CusCodeListItem>("CusCodeList", emptyCusCodeData)
@@ -102,24 +105,96 @@ export async function getDynamicMasterDataByKeys(
   }
 
   const uniqueKeys = [...new Set(keys.map((key) => key.trim()).filter(Boolean))]
-  const snapshots = await Promise.all(
+  const records = await Promise.all(
     uniqueKeys.map(async (key) => {
       const documentId = makeSafeDocumentId(key)
-      const snapshot = await getDoc(doc(db, config.collectionName, documentId))
-      return snapshot.exists()
-        ? ({
-            id: snapshot.id,
-            ...snapshot.data(),
-          } as DynamicMasterDataRecord)
-        : null
+      const matches = await getDynamicMasterDataByBaseDocumentId(config, documentId)
+      return matches[0] ?? null
     })
   )
 
-  return snapshots.filter((record): record is DynamicMasterDataRecord => Boolean(record))
+  return records.filter((record): record is DynamicMasterDataRecord => Boolean(record))
 }
 
 export function getLookupKeyField(config: MasterCollectionConfig) {
-  return config.fieldConfigs?.find((fieldConfig) => fieldConfig.unique)?.name ?? config.fields[0] ?? ""
+  return config.fields[0] ?? ""
+}
+
+function makeSuffixedDocumentId(baseDocumentId: string, suffix: number) {
+  if (suffix <= 1) return baseDocumentId
+  const suffixText = `${DUPLICATE_DOCUMENT_ID_SEPARATOR}${suffix}`
+  return `${baseDocumentId.slice(0, 1400 - suffixText.length)}${suffixText}`
+}
+
+function getDocumentIdSuffix(id: string, baseDocumentId: string) {
+  if (id === baseDocumentId) return 1
+  const prefix = `${baseDocumentId}${DUPLICATE_DOCUMENT_ID_SEPARATOR}`
+  if (!id.startsWith(prefix)) return Number.MAX_SAFE_INTEGER
+  const suffix = Number(id.slice(prefix.length))
+  return Number.isFinite(suffix) && suffix > 1 ? suffix : Number.MAX_SAFE_INTEGER
+}
+
+function sortByDocumentIdSuffix(records: DynamicMasterDataRecord[], baseDocumentId: string) {
+  return [...records].sort((left, right) => {
+    const leftId = String(left.id ?? "")
+    const rightId = String(right.id ?? "")
+    return getDocumentIdSuffix(leftId, baseDocumentId) - getDocumentIdSuffix(rightId, baseDocumentId)
+  })
+}
+
+export async function getDynamicMasterDataByBaseDocumentId(
+  config: Pick<MasterCollectionConfig, "collectionName">,
+  baseDocumentId: string
+): Promise<DynamicMasterDataRecord[]> {
+  const db = getFirestoreSafe()
+  if (!db) {
+    throw new Error(
+      "Firebase is not configured. Please set NEXT_PUBLIC_FIREBASE_* environment variables."
+    )
+  }
+
+  const normalizedBaseDocumentId = makeSafeDocumentId(baseDocumentId)
+  if (!normalizedBaseDocumentId) return []
+
+  const collectionRef = collection(db, config.collectionName)
+  const [exactSnapshot, baseSnapshot] = await Promise.all([
+    getDoc(doc(db, config.collectionName, normalizedBaseDocumentId)),
+    getDocs(query(collectionRef, where("baseDocumentId", "==", normalizedBaseDocumentId))),
+  ])
+  const recordsById = new Map<string, DynamicMasterDataRecord>()
+
+  if (exactSnapshot.exists()) {
+    recordsById.set(exactSnapshot.id, {
+      id: exactSnapshot.id,
+      ...exactSnapshot.data(),
+    } as DynamicMasterDataRecord)
+  }
+
+  baseSnapshot.docs.forEach((document) => {
+    recordsById.set(document.id, {
+      id: document.id,
+      ...document.data(),
+    } as DynamicMasterDataRecord)
+  })
+
+  return sortByDocumentIdSuffix([...recordsById.values()], normalizedBaseDocumentId)
+}
+
+async function getNextDynamicMasterDocumentId(
+  config: Pick<MasterCollectionConfig, "collectionName">,
+  baseDocumentId: string
+) {
+  const existingRecords = await getDynamicMasterDataByBaseDocumentId(config, baseDocumentId)
+  const usedIds = new Set(existingRecords.map((record) => String(record.id ?? "")))
+
+  if (!usedIds.has(baseDocumentId)) return baseDocumentId
+
+  for (let suffix = 2; suffix < 100000; suffix += 1) {
+    const candidateId = makeSuffixedDocumentId(baseDocumentId, suffix)
+    if (!usedIds.has(candidateId)) return candidateId
+  }
+
+  throw new Error("Could not create a unique document ID.")
 }
 
 export async function createDynamicMasterDataRecord(
@@ -133,14 +208,15 @@ export async function createDynamicMasterDataRecord(
   }
 
   const service = createFirestoreCrudService<DynamicMasterDataRecord>(config.collectionName)
-  const documentId = makeSafeDocumentId(lookupKey)
+  const baseDocumentId = makeSafeDocumentId(lookupKey)
+  const documentId = await getNextDynamicMasterDocumentId(config, baseDocumentId)
   return service.create(
     {
       ...record,
       [lookupKeyField]: lookupKey,
       id: documentId,
       documentId,
-      baseDocumentId: documentId,
+      baseDocumentId,
     },
     documentId
   )
@@ -156,16 +232,22 @@ export async function updateDynamicMasterDataRecord(
   if (!lookupKeyField || !currentKey) {
     throw new Error("Lookup key is required.")
   }
-  if (makeSafeDocumentId(currentKey) !== id) {
+  const service = createFirestoreCrudService<DynamicMasterDataRecord>(config.collectionName)
+  const existingRecord = await service.get(id)
+  const baseDocumentId = makeSafeDocumentId(currentKey)
+  const previousBaseDocumentId =
+    String(existingRecord?.baseDocumentId ?? "").trim() ||
+    makeSafeDocumentId(existingRecord?.[lookupKeyField] ?? id)
+
+  if (baseDocumentId !== previousBaseDocumentId) {
     throw new Error("Lookup key cannot be changed. Create a new record instead.")
   }
 
-  const service = createFirestoreCrudService<DynamicMasterDataRecord>(config.collectionName)
   return service.update(id, {
     ...record,
     [lookupKeyField]: currentKey,
     documentId: id,
-    baseDocumentId: id,
+    baseDocumentId,
   })
 }
 

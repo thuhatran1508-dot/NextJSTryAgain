@@ -9,11 +9,11 @@ import {
 
 const STORAGE_KEY = "masterCollectionConfigs:v1"
 
-function makeFieldConfigs(fields: string[], keyField = fields[0]): MasterCollectionFieldConfig[] {
+function makeFieldConfigs(fields: string[]): MasterCollectionFieldConfig[] {
   return fields.map((name) => ({
     name,
-    required: name === keyField,
-    unique: name === keyField,
+    required: false,
+    unique: false,
   }))
 }
 
@@ -88,17 +88,13 @@ function normalizeFieldList(fields: string[]) {
 
 function normalizeFieldConfigs(
   fields: string[],
-  fieldConfigs: MasterCollectionFieldConfig[] | undefined
+  _fieldConfigs: MasterCollectionFieldConfig[] | undefined
 ) {
-  const configByName = new Map(
-    (fieldConfigs ?? []).map((fieldConfig) => [fieldConfig.name.trim(), fieldConfig])
-  )
   const normalized = fields.map((name) => {
-    const existing = configByName.get(name)
     return {
       name,
-      required: Boolean(existing?.required),
-      unique: Boolean(existing?.unique),
+      required: false,
+      unique: false,
     }
   })
 

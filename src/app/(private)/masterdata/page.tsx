@@ -16,7 +16,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -80,8 +79,8 @@ function normalizeFieldDrafts(fields: FieldDraft[]) {
   return fields
     .map((field) => ({
       name: field.name.trim(),
-      required: Boolean(field.required),
-      unique: Boolean(field.unique),
+      required: false,
+      unique: false,
     }))
     .filter((field) => {
       if (!field.name || seen.has(field.name)) return false
@@ -91,11 +90,10 @@ function normalizeFieldDrafts(fields: FieldDraft[]) {
 }
 
 function getFieldConfigs(config: MasterCollectionConfig) {
-  const byName = new Map((config.fieldConfigs ?? []).map((field) => [field.name, field]))
   return config.fields.map((field) => ({
     name: field,
-    required: Boolean(byName.get(field)?.required),
-    unique: Boolean(byName.get(field)?.unique),
+    required: false,
+    unique: false,
   }))
 }
 
@@ -104,7 +102,7 @@ function makeEmptyRecord(config: MasterCollectionConfig): DynamicMasterDataRecor
 }
 
 function getLookupKeyField(config: MasterCollectionConfig) {
-  return getFieldConfigs(config).find((field) => field.unique)?.name ?? config.fields[0] ?? ""
+  return config.fields[0] ?? ""
 }
 
 function getLookupKeyValue(config: MasterCollectionConfig, record: DynamicMasterDataRecord) {
@@ -129,32 +127,69 @@ function matchesRecordSearch(
 
 function validateRecord(
   config: MasterCollectionConfig,
-  record: DynamicMasterDataRecord,
+  record: DynamicMasterDataRecord
+) {
+  const errors: string[] = []
+  const lookupKeyField = getLookupKeyField(config)
+  const lookupKeyValue = normalizeText(record[lookupKeyField])
+
+  if (!lookupKeyValue) {
+    errors.push(`${lookupKeyField} は必須です。`)
+  }
+
+  return errors
+}
+
+type DuplicateFieldWarning = {
+  field: string
+  value: string
+}
+
+function collectDuplicateFieldWarnings(
+  config: MasterCollectionConfig,
+  recordsToSave: DynamicMasterDataRecord[],
   existingRows: DynamicMasterDataRecord[],
   excludeId = ""
 ) {
-  const errors: string[] = []
-  const fieldConfigs = getFieldConfigs(config)
-  const lookupKeyField = getLookupKeyField(config)
+  const warningsByKey = new Map<string, DuplicateFieldWarning>()
+  const valuesByField = new Map<string, Set<string>>()
 
-  fieldConfigs.forEach((fieldConfig) => {
-    const value = normalizeText(record[fieldConfig.name])
-    const isDocumentIdField = fieldConfig.name === lookupKeyField
-    if ((fieldConfig.required || isDocumentIdField) && !value) {
-      errors.push(`${fieldConfig.name} は必須です。`)
-    }
-    if ((fieldConfig.unique || isDocumentIdField) && value) {
-      const duplicated = existingRows.some((row) => {
-        if (excludeId && getRecordId(config, row) === excludeId) return false
-        return normalizeText(row[fieldConfig.name]) === value
-      })
-      if (duplicated) {
-        errors.push(`${fieldConfig.name} は重複できません。`)
-      }
-    }
+  config.fields.forEach((field) => {
+    const values = new Set<string>()
+    existingRows.forEach((row) => {
+      if (excludeId && getRecordId(config, row) === excludeId) return
+      const value = normalizeText(row[field])
+      if (value) values.add(value)
+    })
+    valuesByField.set(field, values)
   })
 
-  return errors
+  recordsToSave.forEach((record) => {
+    config.fields.forEach((field) => {
+      const value = normalizeText(record[field])
+      if (!value) return
+
+      const existingValues = valuesByField.get(field) ?? new Set<string>()
+      if (existingValues.has(value)) {
+        warningsByKey.set(`${field}\u0000${value}`, { field, value })
+      }
+      existingValues.add(value)
+      valuesByField.set(field, existingValues)
+    })
+  })
+
+  return [...warningsByKey.values()]
+}
+
+function confirmDuplicateFieldWarnings(warnings: DuplicateFieldWarning[]) {
+  if (!warnings.length) return true
+
+  const preview = warnings
+    .slice(0, 8)
+    .map((warning) => `${warning.field}: ${warning.value}`)
+    .join("\n")
+  const extraCount = warnings.length > 8 ? `\n...他 ${warnings.length - 8} 件` : ""
+  return window.confirm(`既に存在する内容があります。\n${preview}${extraCount}\n保存しますか？`)
 }
 
 function exportRows(
@@ -344,23 +379,6 @@ export default function MasterDataPage() {
     }))
   }
 
-  function updateConfigFieldFlag(
-    index: number,
-    key: "required" | "unique",
-    value: boolean
-  ) {
-    setConfigDraft((current) => ({
-      ...current,
-      fields: current.fields.map((field, fieldIndex) => {
-        if (fieldIndex !== index) return field
-        return {
-          ...field,
-          [key]: value,
-        }
-      }),
-    }))
-  }
-
   function addConfigField() {
     setConfigDraft((current) => ({
       ...current,
@@ -421,14 +439,19 @@ export default function MasterDataPage() {
       )
       const errors = validateRecord(
         activeConfig,
-        normalizedRecord,
-        activeRows,
-        recordDialogMode === "edit" ? editingRecordId : ""
+        normalizedRecord
       )
       if (errors.length) {
         toast.error(errors[0])
         return
       }
+      const duplicateWarnings = collectDuplicateFieldWarnings(
+        activeConfig,
+        [normalizedRecord],
+        activeRows,
+        recordDialogMode === "edit" ? editingRecordId : ""
+      )
+      if (!confirmDuplicateFieldWarnings(duplicateWarnings)) return
 
       if (recordDialogMode === "create") {
         await createDynamicMasterDataRecord(activeConfig, normalizedRecord)
@@ -486,13 +509,20 @@ export default function MasterDataPage() {
       const rows = await parseImportFile(file, activeConfig)
       const validRows: DynamicMasterDataRecord[] = []
       for (const [index, row] of rows.entries()) {
-        const errors = validateRecord(activeConfig, row, [...activeRows, ...validRows])
+        const errors = validateRecord(activeConfig, row)
         if (errors.length) {
           toast.error(`${index + 2} 行目: ${errors[0]}`)
           return
         }
         validRows.push(row)
       }
+      const duplicateWarnings = collectDuplicateFieldWarnings(
+        activeConfig,
+        validRows,
+        activeRows
+      )
+      if (!confirmDuplicateFieldWarnings(duplicateWarnings)) return
+
       for (const row of validRows) {
         await createDynamicMasterDataRecord(activeConfig, row)
       }
@@ -762,37 +792,17 @@ export default function MasterDataPage() {
             <div className="grid gap-2">
               <Label>フィールド</Label>
               <div className="grid gap-2">
-                <div className="hidden grid-cols-[1fr_80px_100px_132px] gap-2 text-xs font-medium text-muted-foreground sm:grid">
+                <div className="hidden grid-cols-[1fr_132px] gap-2 text-xs font-medium text-muted-foreground sm:grid">
                   <div>フィールド名</div>
-                  <div>必須</div>
-                  <div>重複不可</div>
                   <div />
                 </div>
                 {configDraft.fields.map((field, index) => (
-                  <div key={index} className="grid gap-2 sm:grid-cols-[1fr_80px_100px_auto]">
+                  <div key={index} className="grid gap-2 sm:grid-cols-[1fr_auto]">
                     <Input
                       value={field.name}
                       onChange={(event) => updateConfigField(index, event.target.value)}
                       placeholder={index === 0 ? "キー項目" : "フィールド名"}
                     />
-                    <label className="flex h-9 items-center gap-2 rounded-md border px-3 text-sm">
-                      <Checkbox
-                        checked={Boolean(field.required)}
-                        onCheckedChange={(checked) =>
-                          updateConfigFieldFlag(index, "required", checked === true)
-                        }
-                      />
-                      <span className="sm:hidden">必須</span>
-                    </label>
-                    <label className="flex h-9 items-center gap-2 rounded-md border px-3 text-sm">
-                      <Checkbox
-                        checked={Boolean(field.unique)}
-                        onCheckedChange={(checked) =>
-                          updateConfigFieldFlag(index, "unique", checked === true)
-                        }
-                      />
-                      <span className="sm:hidden">重複不可</span>
-                    </label>
                     <div className="flex gap-1">
                       <Button
                         type="button"
