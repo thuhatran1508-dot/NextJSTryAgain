@@ -197,9 +197,51 @@ async function getNextDynamicMasterDocumentId(
   throw new Error("Could not create a unique document ID.")
 }
 
+export async function getNextDynamicMasterDocumentIds(
+  config: Pick<MasterCollectionConfig, "collectionName">,
+  lookupKeys: string[]
+) {
+  const baseDocumentIds = lookupKeys.map((lookupKey) => makeSafeDocumentId(lookupKey))
+  const uniqueBaseDocumentIds = [...new Set(baseDocumentIds.filter(Boolean))]
+  const usedIdsByBase = new Map<string, Set<string>>()
+
+  await Promise.all(
+    uniqueBaseDocumentIds.map(async (baseDocumentId) => {
+      const existingRecords = await getDynamicMasterDataByBaseDocumentId(config, baseDocumentId)
+      usedIdsByBase.set(
+        baseDocumentId,
+        new Set(existingRecords.map((record) => String(record.id ?? "")))
+      )
+    })
+  )
+
+  return baseDocumentIds.map((baseDocumentId) => {
+    if (!baseDocumentId) return ""
+
+    const usedIds = usedIdsByBase.get(baseDocumentId) ?? new Set<string>()
+    usedIdsByBase.set(baseDocumentId, usedIds)
+
+    if (!usedIds.has(baseDocumentId)) {
+      usedIds.add(baseDocumentId)
+      return baseDocumentId
+    }
+
+    for (let suffix = 2; suffix < 100000; suffix += 1) {
+      const candidateId = makeSuffixedDocumentId(baseDocumentId, suffix)
+      if (!usedIds.has(candidateId)) {
+        usedIds.add(candidateId)
+        return candidateId
+      }
+    }
+
+    throw new Error("Could not create a unique document ID.")
+  })
+}
+
 export async function createDynamicMasterDataRecord(
   config: MasterCollectionConfig,
-  record: DynamicMasterDataRecord
+  record: DynamicMasterDataRecord,
+  options: { documentId?: string } = {}
 ) {
   const lookupKeyField = getLookupKeyField(config)
   const lookupKey = String(record[lookupKeyField] ?? "").trim()
@@ -209,7 +251,9 @@ export async function createDynamicMasterDataRecord(
 
   const service = createFirestoreCrudService<DynamicMasterDataRecord>(config.collectionName)
   const baseDocumentId = makeSafeDocumentId(lookupKey)
-  const documentId = await getNextDynamicMasterDocumentId(config, baseDocumentId)
+  const documentId = options.documentId
+    ? makeSafeDocumentId(options.documentId)
+    : await getNextDynamicMasterDocumentId(config, baseDocumentId)
   return service.create(
     {
       ...record,

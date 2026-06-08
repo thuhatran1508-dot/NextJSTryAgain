@@ -47,6 +47,7 @@ import {
   deleteAllDynamicMasterDataRecords,
   deleteDynamicMasterDataRecord,
   getDynamicMasterData,
+  getNextDynamicMasterDocumentIds,
   type DynamicMasterDataRecord,
   updateDynamicMasterDataRecord,
 } from "@/modules/masterdata/services/masterdata-services"
@@ -523,8 +524,16 @@ export default function MasterDataPage() {
       )
       if (!confirmDuplicateFieldWarnings(duplicateWarnings)) return
 
-      for (const row of validRows) {
-        await createDynamicMasterDataRecord(activeConfig, row)
+      const lookupKeyField = getLookupKeyField(activeConfig)
+      const documentIds = await getNextDynamicMasterDocumentIds(
+        activeConfig,
+        validRows.map((row) => normalizeText(row[lookupKeyField]))
+      )
+
+      for (const [index, row] of validRows.entries()) {
+        await createDynamicMasterDataRecord(activeConfig, row, {
+          documentId: documentIds[index],
+        })
       }
       notifyMasterDataChanged()
       await loadData()
