@@ -334,7 +334,6 @@ export async function readExcelByMapping(
   const sheetValues: Record<string, SheetCellMap> = {}
   const sourceRows: ExcelSourceRow[] = []
   const validColumn = normalizeExcelColumn(mapping.validRowColumn)
-  const detailBoundaryColumns = [...new Set([validColumn, ...getMappedDetailColumns(mapping)])]
   const startRowIndex = mapping.startDetailRow - 1
 
   for (const sheetName of visibleSheetNames) {
@@ -345,7 +344,7 @@ export async function readExcelByMapping(
       sheet,
       range,
       startRowIndex,
-      detailBoundaryColumns
+      [validColumn]
     )
 
     if (lastDetailRowIndex < startRowIndex) continue
@@ -427,23 +426,6 @@ function evaluateSourceFormula(
   }
 
   return baseValue
-}
-
-function getMappedDetailColumns(mapping: ImportMappingConfig) {
-  const columns = new Set<string>()
-  sortMappingEntries(mapping.entries).forEach((entry) => {
-    if (entry.dataSource !== "orderFile") return
-    if (entry.orderFileMode === "detailColumn" && entry.sourceColumn) {
-      columns.add(normalizeExcelColumn(entry.sourceColumn))
-    }
-    if (entry.orderFileMode === "sourceFormula") {
-      const sourcePosition = String(entry.sourcePosition ?? "").trim().toUpperCase()
-      if (/^[A-Z]{1,3}$/.test(sourcePosition)) {
-        columns.add(normalizeExcelColumn(sourcePosition))
-      }
-    }
-  })
-  return [...columns]
 }
 
 function getLastDetailRowIndex(
