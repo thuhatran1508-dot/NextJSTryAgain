@@ -334,23 +334,19 @@ export async function readExcelByMapping(
   const sheetValues: Record<string, SheetCellMap> = {}
   const sourceRows: ExcelSourceRow[] = []
   const validColumn = normalizeExcelColumn(mapping.validRowColumn)
+  const detailBoundaryColumns = [...new Set([validColumn, ...getMappedDetailColumns(mapping)])]
   const startRowIndex = mapping.startDetailRow - 1
 
   for (const sheetName of visibleSheetNames) {
     const sheet = workbook.Sheets[sheetName]
     sheetValues[sheetName] = getSheetValues(sheet)
     const range = XLSX.utils.decode_range(sheet["!ref"] ?? "A1:A1")
-    let lastDetailRowIndex = -1
-
-    for (let rowIndex = startRowIndex; rowIndex <= range.e.r; rowIndex += 1) {
-      const validColumnAddress = XLSX.utils.encode_cell({
-        r: rowIndex,
-        c: columnNameToIndex(validColumn),
-      })
-      if (normalizeText(getSheetCell(sheet, validColumnAddress))) {
-        lastDetailRowIndex = rowIndex
-      }
-    }
+    const lastDetailRowIndex = getLastDetailRowIndex(
+      sheet,
+      range,
+      startRowIndex,
+      detailBoundaryColumns
+    )
 
     if (lastDetailRowIndex < startRowIndex) continue
 
@@ -431,6 +427,42 @@ function evaluateSourceFormula(
   }
 
   return baseValue
+}
+
+function getMappedDetailColumns(mapping: ImportMappingConfig) {
+  const columns = new Set<string>()
+  sortMappingEntries(mapping.entries).forEach((entry) => {
+    if (entry.dataSource !== "orderFile") return
+    if (entry.orderFileMode === "detailColumn" && entry.sourceColumn) {
+      columns.add(normalizeExcelColumn(entry.sourceColumn))
+    }
+    if (entry.orderFileMode === "sourceFormula") {
+      const sourcePosition = String(entry.sourcePosition ?? "").trim().toUpperCase()
+      if (/^[A-Z]{1,3}$/.test(sourcePosition)) {
+        columns.add(normalizeExcelColumn(sourcePosition))
+      }
+    }
+  })
+  return [...columns]
+}
+
+function getLastDetailRowIndex(
+  sheet: XLSX.WorkSheet,
+  range: XLSX.Range,
+  startRowIndex: number,
+  columns: string[]
+) {
+  let lastDetailRowIndex = -1
+  columns.forEach((column) => {
+    const columnIndex = columnNameToIndex(column)
+    for (let rowIndex = startRowIndex; rowIndex <= range.e.r; rowIndex += 1) {
+      const address = XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex })
+      if (normalizeText(getSheetCell(sheet, address))) {
+        lastDetailRowIndex = Math.max(lastDetailRowIndex, rowIndex)
+      }
+    }
+  })
+  return lastDetailRowIndex
 }
 
 function evaluateFormula(formula: string | undefined, rowNumber: number, draft: RowDraft) {
