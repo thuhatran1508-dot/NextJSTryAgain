@@ -93,7 +93,7 @@ function normalizeFieldConfigs(
   const configByName = new Map(
     (fieldConfigs ?? []).map((fieldConfig) => [fieldConfig.name.trim(), fieldConfig])
   )
-  const normalized = fields.map((name, index) => {
+  const normalized = fields.map((name) => {
     const existing = configByName.get(name)
     return {
       name,
@@ -102,18 +102,7 @@ function normalizeFieldConfigs(
     }
   })
 
-  if (!normalized.some((fieldConfig) => fieldConfig.unique)) {
-    normalized[0] = {
-      ...normalized[0],
-      unique: true,
-      required: true,
-    }
-  }
-
-  return normalized.map((fieldConfig) => ({
-    ...fieldConfig,
-    required: fieldConfig.unique ? true : fieldConfig.required,
-  }))
+  return normalized
 }
 
 export function normalizeMasterCollectionConfig(

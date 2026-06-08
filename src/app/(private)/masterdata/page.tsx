@@ -77,7 +77,7 @@ function normalizeSearchText(value: unknown) {
 
 function normalizeFieldDrafts(fields: FieldDraft[]) {
   const seen = new Set<string>()
-  const normalized = fields
+  return fields
     .map((field) => ({
       name: field.name.trim(),
       required: Boolean(field.required),
@@ -88,27 +88,14 @@ function normalizeFieldDrafts(fields: FieldDraft[]) {
       seen.add(field.name)
       return true
     })
-
-  if (normalized.length && !normalized.some((field) => field.unique)) {
-    normalized[0] = { ...normalized[0], required: true, unique: true }
-  }
-
-  return normalized
 }
 
 function getFieldConfigs(config: MasterCollectionConfig) {
   const byName = new Map((config.fieldConfigs ?? []).map((field) => [field.name, field]))
-  const fieldConfigs = config.fields.map((field) => ({
+  return config.fields.map((field) => ({
     name: field,
     required: Boolean(byName.get(field)?.required),
     unique: Boolean(byName.get(field)?.unique),
-  }))
-  if (!fieldConfigs.some((field) => field.unique) && fieldConfigs[0]) {
-    fieldConfigs[0] = { ...fieldConfigs[0], required: true, unique: true }
-  }
-  return fieldConfigs.map((field) => ({
-    ...field,
-    required: field.unique ? true : field.required,
   }))
 }
 
@@ -148,13 +135,15 @@ function validateRecord(
 ) {
   const errors: string[] = []
   const fieldConfigs = getFieldConfigs(config)
+  const lookupKeyField = getLookupKeyField(config)
 
   fieldConfigs.forEach((fieldConfig) => {
     const value = normalizeText(record[fieldConfig.name])
-    if (fieldConfig.required && !value) {
+    const isDocumentIdField = fieldConfig.name === lookupKeyField
+    if ((fieldConfig.required || isDocumentIdField) && !value) {
       errors.push(`${fieldConfig.name} は必須です。`)
     }
-    if (fieldConfig.unique && value) {
+    if ((fieldConfig.unique || isDocumentIdField) && value) {
       const duplicated = existingRows.some((row) => {
         if (excludeId && getRecordId(config, row) === excludeId) return false
         return normalizeText(row[fieldConfig.name]) === value
@@ -210,7 +199,7 @@ export default function MasterDataPage() {
   const [configDraft, setConfigDraft] = useState({
     collectionName: "",
     displayName: "",
-    fields: [{ name: "", required: true, unique: true }] as FieldDraft[],
+    fields: [{ name: "", required: false, unique: false }] as FieldDraft[],
   })
   const [recordDialogOpen, setRecordDialogOpen] = useState(false)
   const [recordDialogMode, setRecordDialogMode] = useState<RecordDialogMode>("create")
@@ -266,7 +255,7 @@ export default function MasterDataPage() {
     setConfigDraft({
       collectionName: "",
       displayName: "",
-      fields: [{ name: "", required: true, unique: true }],
+      fields: [{ name: "", required: false, unique: false }],
     })
     setConfigDialogOpen(true)
   }
@@ -359,7 +348,6 @@ export default function MasterDataPage() {
         return {
           ...field,
           [key]: value,
-          required: key === "unique" && value ? true : field.required,
         }
       }),
     }))
