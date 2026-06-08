@@ -151,13 +151,21 @@ export const masterCollectionConfigRepository = {
   },
 
   async delete(collectionName: string) {
-    const next = mergeDefaultConfigs(getLocalConfigs()).filter(
-      (config) => config.collectionName !== collectionName
-    )
+    const tombstone: MasterCollectionConfig = {
+      id: collectionName,
+      collectionName,
+      displayName: collectionName,
+      fields: ["id"],
+      active: false,
+    }
+    const current = getLocalConfigs()
+    const next = current.some((config) => config.collectionName === collectionName)
+      ? current.map((config) => (config.collectionName === collectionName ? tombstone : config))
+      : [...current, tombstone]
     setLocalConfigs(next)
 
     try {
-      await masterCollectionConfigService.delete(collectionName)
+      await masterCollectionConfigService.create(tombstone, collectionName)
     } catch {
       // The local delete is enough for offline/local development.
     }

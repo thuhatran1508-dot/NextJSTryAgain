@@ -33,7 +33,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Table,
   TableBody,
@@ -142,6 +141,7 @@ export default function MasterDataPage() {
   const [saving, setSaving] = useState(false)
   const [configDialogOpen, setConfigDialogOpen] = useState(false)
   const [editingConfig, setEditingConfig] = useState<MasterCollectionConfig | null>(null)
+  const [deleteConfigTarget, setDeleteConfigTarget] = useState<MasterCollectionConfig | null>(null)
   const [configDraft, setConfigDraft] = useState({
     collectionName: "",
     displayName: "",
@@ -219,7 +219,7 @@ export default function MasterDataPage() {
     const fields = parseFieldList(configDraft.fields)
     const collectionName = configDraft.collectionName.trim()
     if (!collectionName || !fields.length) {
-      toast.error("コレクション名とフィールドを入力してください。")
+      toast.error("データリストIDとフィールドを入力してください。")
       return
     }
 
@@ -238,9 +238,30 @@ export default function MasterDataPage() {
       setConfigDialogOpen(false)
       setActiveCollection(saved.collectionName)
       await loadData()
-      toast.success("マスタコレクションを保存しました。")
+      toast.success("データリストを保存しました。")
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "保存に失敗しました。")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function deleteConfig() {
+    if (!deleteConfigTarget) return
+    setSaving(true)
+    try {
+      await masterCollectionConfigRepository.delete(deleteConfigTarget.collectionName)
+      setDeleteConfigTarget(null)
+      setConfigDialogOpen(false)
+      setActiveCollection((current) => {
+        if (current !== deleteConfigTarget.collectionName) return current
+        return configs.find((config) => config.collectionName !== deleteConfigTarget.collectionName)
+          ?.collectionName ?? ""
+      })
+      await loadData()
+      toast.success("データリストを削除しました。")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "削除に失敗しました。")
     } finally {
       setSaving(false)
     }
@@ -336,12 +357,12 @@ export default function MasterDataPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">マスタデータ</h1>
           <p className="text-sm text-muted-foreground">
-            コレクション設定に基づいてマスタデータを管理します。
+            データリスト設定に基づいてマスタデータを管理します。
           </p>
         </div>
         <Button type="button" onClick={openNewConfigDialog}>
           <Plus className="size-4" />
-          コレクション追加
+          データリスト追加
         </Button>
       </div>
 
@@ -350,30 +371,43 @@ export default function MasterDataPage() {
           読み込み中...
         </div>
       ) : configs.length ? (
-        <Tabs value={activeCollection} onValueChange={setActiveCollection}>
-          <div className="overflow-x-auto">
-            <TabsList>
+        <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
+          <div className="rounded-md border bg-background p-2">
+            <div className="px-2 py-2 text-xs font-medium text-muted-foreground">
+              データリスト
+            </div>
+            <div className="grid gap-1">
               {configs.map((config) => (
-                <TabsTrigger key={config.collectionName} value={config.collectionName}>
-                  {config.displayName}
-                </TabsTrigger>
+                <button
+                  key={config.collectionName}
+                  type="button"
+                  onClick={() => setActiveCollection(config.collectionName)}
+                  className={`rounded-md px-3 py-2 text-left text-sm transition-colors ${
+                    activeCollection === config.collectionName
+                      ? "bg-accent font-medium text-accent-foreground"
+                      : "hover:bg-accent/60"
+                  }`}
+                >
+                  <span className="block truncate">{config.displayName}</span>
+                </button>
               ))}
-            </TabsList>
+            </div>
           </div>
 
-          {configs.map((config) => {
-            const rows = recordsByCollection[config.collectionName] ?? []
-            const search = searchByCollection[config.collectionName] ?? ""
-            const visibleRows = rows.filter((row) => matchesRecordSearch(config, row, search))
+          <div>
+            {configs.map((config) => {
+              const rows = recordsByCollection[config.collectionName] ?? []
+              const search = searchByCollection[config.collectionName] ?? ""
+              const visibleRows = rows.filter((row) => matchesRecordSearch(config, row, search))
+              if (config.collectionName !== activeCollection) return null
 
-            return (
-              <TabsContent key={config.collectionName} value={config.collectionName}>
-                <div className="rounded-md border bg-background">
+              return (
+                <div key={config.collectionName} className="rounded-md border bg-background">
                   <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
                     <div>
                       <div className="font-medium">{config.displayName}</div>
                       <div className="text-xs text-muted-foreground">
-                        {config.collectionName} / lookup key: {getLookupKeyField(config)}
+                        データリストID: {config.collectionName} / キー項目: {getLookupKeyField(config)}
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -516,27 +550,27 @@ export default function MasterDataPage() {
                     </Table>
                   </div>
                 </div>
-              </TabsContent>
-            )
-          })}
-        </Tabs>
+              )
+            })}
+          </div>
+        </div>
       ) : (
         <div className="rounded-md border bg-background p-8 text-sm text-muted-foreground">
-          コレクション設定がありません。
+          データリスト設定がありません。
         </div>
       )}
 
       <Dialog open={configDialogOpen} onOpenChange={setConfigDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>マスタコレクション設定</DialogTitle>
+            <DialogTitle>データリスト設定</DialogTitle>
             <DialogDescription>
-              先頭フィールドが lookup key になり、Document ID として使われます。
+              先頭のフィールドがキー項目として使われます。
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
             <div className="grid gap-2">
-              <Label>Collection name</Label>
+              <Label>データリストID</Label>
               <Input
                 value={configDraft.collectionName}
                 onChange={(event) =>
@@ -550,7 +584,7 @@ export default function MasterDataPage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label>Display name</Label>
+              <Label>データリスト名</Label>
               <Input
                 value={configDraft.displayName}
                 onChange={(event) =>
@@ -560,7 +594,7 @@ export default function MasterDataPage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label>Fields</Label>
+              <Label>フィールド</Label>
               <textarea
                 value={configDraft.fields}
                 onChange={(event) =>
@@ -571,13 +605,27 @@ export default function MasterDataPage() {
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setConfigDialogOpen(false)}>
-              キャンセル
-            </Button>
-            <Button type="button" onClick={saveConfig} disabled={saving}>
-              保存
-            </Button>
+          <DialogFooter className="gap-2 sm:justify-between">
+            <div>
+              {editingConfig ? (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={() => setDeleteConfigTarget(editingConfig)}
+                  disabled={saving}
+                >
+                  データリスト削除
+                </Button>
+              ) : null}
+            </div>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={() => setConfigDialogOpen(false)}>
+                キャンセル
+              </Button>
+              <Button type="button" onClick={saveConfig} disabled={saving}>
+                保存
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -590,7 +638,7 @@ export default function MasterDataPage() {
             </DialogTitle>
             <DialogDescription>
               {activeConfig
-                ? `${getLookupKeyField(activeConfig)} は Document ID として使われます。`
+                ? `${getLookupKeyField(activeConfig)} はキー項目です。`
                 : ""}
             </DialogDescription>
           </DialogHeader>
@@ -600,7 +648,7 @@ export default function MasterDataPage() {
                 <div key={field} className="grid gap-2">
                   <Label>
                     {field}
-                    {index === 0 ? " (lookup key)" : ""}
+                    {index === 0 ? " (キー項目)" : ""}
                   </Label>
                   <Input
                     value={normalizeText(recordDraft[field])}
@@ -627,12 +675,30 @@ export default function MasterDataPage() {
         </DialogContent>
       </Dialog>
 
+      <AlertDialog
+        open={Boolean(deleteConfigTarget)}
+        onOpenChange={(open) => !open && setDeleteConfigTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>データリストを削除しますか。</AlertDialogTitle>
+            <AlertDialogDescription>
+              画面の一覧からこのデータリストを削除します。登録済みのデータは削除されません。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction onClick={deleteConfig}>削除</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>マスタデータを削除しますか。</AlertDialogTitle>
             <AlertDialogDescription>
-              この操作は元に戻せません。Firestore の対象ドキュメントを削除します。
+              この操作は元に戻せません。選択したデータを削除します。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
