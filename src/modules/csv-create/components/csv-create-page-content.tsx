@@ -226,6 +226,15 @@ function buildMasterDataDraftFromCsvRow({
   ) as DynamicMasterDataRecord
 }
 
+function getMasterDataEditKey(input: {
+  mappingId: string
+  rowId: string
+  column: CsvColumnLetter
+  value: string
+}) {
+  return `${input.mappingId}:${input.rowId}:${input.column}:${input.value}`
+}
+
 const CSV_SESSION_STORAGE_KEY = "csv-create-working-session"
 const MASTER_DATA_CHANGED_STORAGE_KEY = "master-data:changed-at"
 const MIN_CSV_COLUMN_WIDTH = 72
@@ -257,6 +266,7 @@ interface PendingMasterDataSave {
   entry: ImportMappingEntry
   row: CsvWorkingRow
   column: CsvColumnLetter
+  editKey: string
   draft: DynamicMasterDataRecord
 }
 
@@ -394,7 +404,6 @@ function storeSessionState(state: CsvCreateSessionState) {
 
 export function CsvCreatePageContent() {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
-  const lookupSavePromptedRef = useRef<Set<string>>(new Set())
   const initialSessionRef = useRef<CsvCreateSessionState | null>(null)
   if (!initialSessionRef.current) initialSessionRef.current = loadStoredSessionState()
   const initialSession = initialSessionRef.current
@@ -420,8 +429,12 @@ export function CsvCreatePageContent() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(initialSession.hasUnsavedChanges)
   const [pendingMasterDataSave, setPendingMasterDataSave] =
     useState<PendingMasterDataSave | null>(null)
+  const [pendingMasterDataQueue, setPendingMasterDataQueue] = useState<PendingMasterDataSave[]>([])
   const [masterDataDraft, setMasterDataDraft] = useState<DynamicMasterDataRecord>({})
   const [savingMasterData, setSavingMasterData] = useState(false)
+  const [savedMasterDataEditKeys, setSavedMasterDataEditKeys] = useState<Set<string>>(
+    () => new Set()
+  )
 
   const selectedMapping = useMemo(
     () => mappings.find((mapping) => mapping.id === selectedMappingId) ?? null,
@@ -554,6 +567,10 @@ export function CsvCreatePageContent() {
     setMasterDataStore(null)
     setIsExpanded(false)
     setHasUnsavedChanges(false)
+    setPendingMasterDataSave(null)
+    setPendingMasterDataQueue([])
+    setMasterDataDraft({})
+    setSavedMasterDataEditKeys(new Set())
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
@@ -613,6 +630,10 @@ export function CsvCreatePageContent() {
       setDraftRows(cloneRows(result.rows))
       setIssues(nextIssues)
       setManualInputs(result.manualInputs)
+      setPendingMasterDataSave(null)
+      setPendingMasterDataQueue([])
+      setMasterDataDraft({})
+      setSavedMasterDataEditKeys(new Set())
       setHasUnsavedChanges(false)
       toast.success("再処理しました。")
     } catch {
@@ -658,6 +679,10 @@ export function CsvCreatePageContent() {
       setDraftRows(cloneRows(result.rows))
       setIssues(nextIssues)
       setManualInputs(result.manualInputs)
+      setPendingMasterDataSave(null)
+      setPendingMasterDataQueue([])
+      setMasterDataDraft({})
+      setSavedMasterDataEditKeys(new Set())
       setHasUnsavedChanges(false)
       toast.success("インポートしました。")
     } catch {
@@ -773,10 +798,6 @@ export function CsvCreatePageContent() {
     const originalValue = rows.find((savedRow) => savedRow.id === rowId)?.values[column]?.value ?? ""
     if (value === originalValue) return
 
-    const promptKey = `${rowId}:${column}:${value}`
-    if (lookupSavePromptedRef.current.has(promptKey)) return
-    lookupSavePromptedRef.current.add(promptKey)
-
     const entry = selectedMapping.entries.find((mappingEntry) => mappingEntry.id === cell.mappingEntryId)
     if (!entry || entry.dataSource !== "masterLookup" || !entry.lookupCollection) return
 
@@ -799,11 +820,18 @@ export function CsvCreatePageContent() {
         row,
         editedValue: value,
       })
+      const editKey = getMasterDataEditKey({
+        mappingId: selectedMapping.id,
+        rowId,
+        column,
+        value,
+      })
       setPendingMasterDataSave({
         config,
         entry,
         row,
         column,
+        editKey,
         draft,
       })
       setMasterDataDraft(draft)
@@ -814,7 +842,87 @@ export function CsvCreatePageContent() {
 
   function commitCell(rowId: string, column: CsvColumnLetter, value: string) {
     maybeFillStaticColumn(rowId, column, value)
-    void maybeOpenMasterDataSaveDialog(rowId, column, value)
+  }
+
+  function openPendingMasterDataDialog(queue: PendingMasterDataSave[]) {
+    const [nextSave, ...remainingQueue] = queue
+    if (!nextSave) {
+      setPendingMasterDataSave(null)
+      setPendingMasterDataQueue([])
+      setMasterDataDraft({})
+      return
+    }
+
+    setPendingMasterDataSave(nextSave)
+    setPendingMasterDataQueue(remainingQueue)
+    setMasterDataDraft(nextSave.draft)
+  }
+
+  async function collectPendingMasterDataSaves() {
+    if (!selectedMapping || !sessionOpen) return []
+
+    const configs = await masterCollectionConfigRepository.list()
+    const configsByCollection = new Map(
+      configs.map((config) => [config.collectionName, config])
+    )
+    const pendingByKey = new Map<string, PendingMasterDataSave>()
+
+    draftRows.forEach((row) => {
+      Object.entries(row.values).forEach(([column, cell]) => {
+        if (!cell || !cell.edited || cell.source !== "masterLookup" || !cell.mappingEntryId) return
+        if (!cell.value.trim()) return
+
+        const entry = selectedMapping.entries.find(
+          (mappingEntry) => mappingEntry.id === cell.mappingEntryId
+        )
+        if (!entry || entry.dataSource !== "masterLookup" || !entry.lookupCollection) return
+
+        const editKey = getMasterDataEditKey({
+          mappingId: selectedMapping.id,
+          rowId: row.id,
+          column: column as CsvColumnLetter,
+          value: cell.value,
+        })
+        if (savedMasterDataEditKeys.has(editKey) || pendingByKey.has(editKey)) return
+
+        const config = configsByCollection.get(entry.lookupCollection)
+        if (!config) return
+
+        const draft = buildMasterDataDraftFromCsvRow({
+          config,
+          entry,
+          row,
+          editedValue: cell.value,
+        })
+        pendingByKey.set(editKey, {
+          config,
+          entry,
+          row,
+          column: column as CsvColumnLetter,
+          editKey,
+          draft,
+        })
+      })
+    })
+
+    return [...pendingByKey.values()]
+  }
+
+  async function openMasterDataInputQueue() {
+    try {
+      const queue = await collectPendingMasterDataSaves()
+      if (!queue.length) {
+        toast.info("マスタデータに入力する未保存のlookup編集はありません。")
+        return
+      }
+      openPendingMasterDataDialog(queue)
+    } catch {
+      toast.error("マスタデータ設定を読み込めませんでした。")
+    }
+  }
+
+  function skipPendingMasterData() {
+    openPendingMasterDataDialog(pendingMasterDataQueue)
   }
 
   async function savePendingMasterData() {
@@ -839,8 +947,12 @@ export function CsvCreatePageContent() {
           saved as Record<string, unknown>,
         ],
       }))
-      setPendingMasterDataSave(null)
-      setMasterDataDraft({})
+      setSavedMasterDataEditKeys((currentKeys) => {
+        const nextKeys = new Set(currentKeys)
+        nextKeys.add(pendingMasterDataSave.editKey)
+        return nextKeys
+      })
+      openPendingMasterDataDialog(pendingMasterDataQueue)
       toast.success("マスタデータに保存しました。")
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "マスタデータを保存できませんでした。")
@@ -980,6 +1092,10 @@ export function CsvCreatePageContent() {
             <X className="size-4" />
             変更を破棄
           </Button>
+          <Button type="button" variant="outline" onClick={() => void openMasterDataInputQueue()} disabled={!sessionOpen || !rows.length}>
+            <FilePlus2 className="size-4" />
+            マスタデータ入力
+          </Button>
           <Button type="button" onClick={saveEdits} disabled={!sessionOpen || !hasUnsavedChanges}>
             <Save className="size-4" />
             保存
@@ -1082,6 +1198,7 @@ export function CsvCreatePageContent() {
         onOpenChange={(open) => {
           if (open) return
           setPendingMasterDataSave(null)
+          setPendingMasterDataQueue([])
           setMasterDataDraft({})
         }}
       >
@@ -1122,11 +1239,20 @@ export function CsvCreatePageContent() {
               variant="outline"
               onClick={() => {
                 setPendingMasterDataSave(null)
+                setPendingMasterDataQueue([])
                 setMasterDataDraft({})
               }}
               disabled={savingMasterData}
             >
               キャンセル
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={skipPendingMasterData}
+              disabled={savingMasterData}
+            >
+              保存しない
             </Button>
             <Button type="button" onClick={() => void savePendingMasterData()} disabled={savingMasterData}>
               保存
@@ -1154,6 +1280,10 @@ export function CsvCreatePageContent() {
               <Button size="sm" variant="outline" onClick={discardEdits} disabled={!hasUnsavedChanges}>
                 <X className="size-4" />
                 変更を破棄
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => void openMasterDataInputQueue()}>
+                <FilePlus2 className="size-4" />
+                マスタデータ入力
               </Button>
               <Button size="sm" onClick={saveEdits} disabled={!hasUnsavedChanges}>
                 <Save className="size-4" />
