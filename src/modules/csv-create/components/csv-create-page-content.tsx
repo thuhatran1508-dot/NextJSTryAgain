@@ -7,7 +7,6 @@ import type {
   MouseEvent as ReactMouseEvent,
 } from "react"
 import {
-  AlertTriangle,
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
@@ -20,7 +19,6 @@ import {
   GripVertical,
   LogOut,
   Maximize2,
-  Plus,
   RefreshCw,
   Save,
   Upload,
@@ -63,7 +61,6 @@ import type {
 
 import {
   buildCsvRowsFromMapping,
-  createMissingMasterDataRecord,
   downloadCsv,
   exportRowsToCsv,
   loadMasterDataStore,
@@ -706,6 +703,13 @@ export function CsvCreatePageContent() {
     applyCellEdits([{ rowId, column, value }])
   }
 
+  function updateManualValue(entryId: string, value: string) {
+    setManualValues((currentValues) => ({
+      ...currentValues,
+      [entryId]: value,
+    }))
+  }
+
   function saveEdits() {
     if (!sessionOpen) return
     const nextRows = cloneRows(draftRows)
@@ -750,24 +754,6 @@ export function CsvCreatePageContent() {
     toast.success("CSVをエクスポートしました。")
   }
 
-  async function addMissingMasterData(issue: CsvValidationIssue) {
-    if (!sessionOpen) return
-    if (!issue.missingMasterDataType || !issue.sourceValue) return
-    const shouldAdd = window.confirm(
-      `${issue.missingMasterDataType} に「${issue.sourceValue}」を追加しますか。`
-    )
-    if (!shouldAdd) return
-    setProcessing(true)
-    try {
-      await createMissingMasterDataRecord(issue.missingMasterDataType, issue.sourceValue)
-      toast.success("マスタデータを追加しました。")
-      await rebuildWithManualValues()
-    } catch {
-      toast.error("マスタデータを追加できませんでした。")
-      setProcessing(false)
-    }
-  }
-
   const table = selectedMapping ? (
     <CsvWorkingTable
       mapping={selectedMapping}
@@ -792,6 +778,15 @@ export function CsvCreatePageContent() {
       }}
       onChangeSort={setSortState}
       expanded={isExpanded}
+    />
+  ) : null
+  const manualInputPanel = manualInputs.length ? (
+    <ManualInputPanel
+      manualInputs={manualInputs}
+      manualValues={manualValues}
+      disabled={!sessionOpen || processing}
+      onChange={updateManualValue}
+      onCommit={() => void rebuildWithManualValues()}
     />
   ) : null
 
@@ -914,29 +909,6 @@ export function CsvCreatePageContent() {
         </div>
       </div>
 
-      {manualInputs.length ? (
-        <div className="grid gap-3 rounded-md border bg-background p-4 md:grid-cols-3">
-          {manualInputs.map((manualInput) => (
-            <div key={manualInput.entryId} className="grid gap-2">
-              <Label>{manualInput.label}</Label>
-              <Input
-                value={manualValues[manualInput.entryId] ?? manualInput.value}
-                onChange={(event) => {
-                  const nextValues = {
-                    ...manualValues,
-                    [manualInput.entryId]: event.target.value,
-                  }
-                  setManualValues(nextValues)
-                }}
-                onBlur={() => void rebuildWithManualValues()}
-                disabled={!sessionOpen || processing}
-                placeholder="値を入力"
-              />
-            </div>
-          ))}
-        </div>
-      ) : null}
-
       <StatusPanel
         sessionOpen={sessionOpen}
         sourceFileName={sourceFileName}
@@ -945,13 +917,12 @@ export function CsvCreatePageContent() {
         processing={processing}
       />
 
-      {issues.length ? (
-        <ValidationPanel issues={issues} onAddMasterData={(issue) => void addMissingMasterData(issue)} />
-      ) : null}
-
       <div className="min-h-96 rounded-md border bg-background">
         {rows.length ? (
-          table
+          <div className="flex min-h-96 flex-col">
+            {manualInputPanel ? <div className="border-b p-3">{manualInputPanel}</div> : null}
+            <div className="min-h-0 flex-1">{table}</div>
+          </div>
         ) : (
           <div className="flex min-h-96 flex-col items-center justify-center gap-3 p-8 text-center text-sm text-muted-foreground">
             <FileSpreadsheet className="size-10" />
@@ -962,8 +933,11 @@ export function CsvCreatePageContent() {
 
       {isExpanded && selectedMapping ? (
         <div className="fixed inset-4 z-50 flex flex-col rounded-md border bg-background shadow-2xl">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b p-3">
-            <div className="font-medium">CSVプレビュー</div>
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b p-3">
+            <div className="grid min-w-[280px] max-w-xl flex-1 gap-2">
+              <div className="font-medium">CSVプレビュー</div>
+              {manualInputPanel}
+            </div>
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant={displayMode === "compact" ? "default" : "outline"} onClick={() => setDisplayMode("compact")}>
                 <EyeOff className="size-4" />
@@ -1032,42 +1006,33 @@ function StatusItem({ label, value }: { label: string; value: string }) {
   )
 }
 
-function ValidationPanel({
-  issues,
-  onAddMasterData,
+function ManualInputPanel({
+  manualInputs,
+  manualValues,
+  disabled,
+  onChange,
+  onCommit,
 }: {
-  issues: CsvValidationIssue[]
-  onAddMasterData: (issue: CsvValidationIssue) => void
+  manualInputs: CsvManualInput[]
+  manualValues: Record<string, string>
+  disabled: boolean
+  onChange: (entryId: string, value: string) => void
+  onCommit: () => void
 }) {
   return (
-    <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
-      <div className="mb-3 flex items-center gap-2 font-medium">
-        <AlertTriangle className="size-4" />
-        確認が必要なデータがあります
-      </div>
-      <div className="max-h-52 overflow-auto rounded-md border bg-background">
-        {issues.slice(0, 80).map((issue) => (
-          <div
-            key={issue.id}
-            className="grid gap-2 border-b p-3 last:border-b-0 md:grid-cols-[80px_100px_minmax(0,1fr)_auto]"
-          >
-            <div>{issue.rowNumber ? `${issue.rowNumber}行` : "-"}</div>
-            <div>{issue.csvColumn ?? "-"}</div>
-            <div className="min-w-0">
-              <div className="truncate">{issue.message}</div>
-              {issue.suggestedAction ? (
-                <div className="truncate text-xs text-muted-foreground">{issue.suggestedAction}</div>
-              ) : null}
-            </div>
-            {issue.missingMasterDataType && issue.sourceValue ? (
-              <Button type="button" size="sm" variant="outline" onClick={() => onAddMasterData(issue)}>
-                <Plus className="size-4" />
-                マスタ追加
-              </Button>
-            ) : null}
-          </div>
-        ))}
-      </div>
+    <div className="grid max-w-2xl gap-3 md:grid-cols-3">
+      {manualInputs.map((manualInput) => (
+        <div key={manualInput.entryId} className="grid min-w-[220px] gap-2">
+          <Label>{manualInput.label}</Label>
+          <Input
+            value={manualValues[manualInput.entryId] ?? manualInput.value}
+            onChange={(event) => onChange(manualInput.entryId, event.target.value)}
+            onBlur={onCommit}
+            disabled={disabled}
+            placeholder="値を入力"
+          />
+        </div>
+      ))}
     </div>
   )
 }
