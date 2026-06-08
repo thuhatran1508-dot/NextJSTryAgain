@@ -1631,11 +1631,55 @@ function CsvWorkingTable({
     onPasteCells(getSelectedClearEdits())
   }
 
-  function handleKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
-    if (!hasMultiCellSelection()) return
-    if (event.key !== "Delete" && event.key !== "Backspace") return
+  function focusCell(rowIndex: number, columnIndex: number) {
+    const nextRow = sortedRows[rowIndex]
+    const nextColumn = effectiveColumns[columnIndex]
+    if (!nextRow || !nextColumn) return
+
+    window.requestAnimationFrame(() => {
+      const selector = `[data-csv-cell="${CSS.escape(getCellKey(nextRow.id, nextColumn))}"]`
+      const input = document.querySelector<HTMLInputElement>(selector)
+      input?.focus()
+      input?.select()
+    })
+  }
+
+  function handleKeyDown(
+    event: ReactKeyboardEvent<HTMLInputElement>,
+    rowId: string,
+    column: CsvColumnLetter
+  ) {
+    if (event.key === "Delete" || event.key === "Backspace") {
+      if (!hasMultiCellSelection()) return
+      event.preventDefault()
+      onPasteCells(getSelectedClearEdits())
+      return
+    }
+    if (!["Enter", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) return
+
+    const rowIndex = sortedRows.findIndex((row) => row.id === rowId)
+    const columnIndex = effectiveColumns.indexOf(column)
+    if (rowIndex < 0 || columnIndex < 0) return
+
+    let nextRowIndex = rowIndex
+    let nextColumnIndex = columnIndex
+    if (event.key === "Enter") nextRowIndex += event.shiftKey ? -1 : 1
+    if (event.key === "ArrowUp") nextRowIndex -= 1
+    if (event.key === "ArrowDown") nextRowIndex += 1
+    if (event.key === "ArrowLeft") nextColumnIndex -= 1
+    if (event.key === "ArrowRight") nextColumnIndex += 1
+
+    if (
+      nextRowIndex < 0 ||
+      nextRowIndex >= sortedRows.length ||
+      nextColumnIndex < 0 ||
+      nextColumnIndex >= effectiveColumns.length
+    ) {
+      return
+    }
+
     event.preventDefault()
-    onPasteCells(getSelectedClearEdits())
+    focusCell(nextRowIndex, nextColumnIndex)
   }
 
   return (
@@ -1752,8 +1796,9 @@ function CsvWorkingTable({
                     }
                     onCopy={handleCopy}
                     onCut={handleCut}
-                    onKeyDown={handleKeyDown}
+                    onKeyDown={(event) => handleKeyDown(event, row.id, column)}
                     onPaste={(event) => handlePaste(event, row.id, column)}
+                    data-csv-cell={getCellKey(row.id, column)}
                     className="h-9 w-full truncate bg-transparent px-3 text-sm outline-none focus:bg-background"
                     aria-label={`${getColumnLabel(mapping, column)} ${row.rowNumber}行`}
                   />
