@@ -31,11 +31,18 @@ export type BatchStatus =
 export type ValidationSeverity = "error" | "warning" | "info"
 export type MissingMasterDataType = string
 
+export interface MasterCollectionFieldConfig {
+  name: string
+  required?: boolean
+  unique?: boolean
+}
+
 export interface MasterCollectionConfig extends AuditFields {
   id: string
   collectionName: string
   displayName: string
   fields: string[]
+  fieldConfigs?: MasterCollectionFieldConfig[]
   active?: boolean
   systemDefault?: boolean
 }

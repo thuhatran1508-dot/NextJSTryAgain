@@ -89,7 +89,7 @@ export async function getDynamicMasterData(
 }
 
 export function getLookupKeyField(config: MasterCollectionConfig) {
-  return config.fields[0] ?? ""
+  return config.fieldConfigs?.find((fieldConfig) => fieldConfig.unique)?.name ?? config.fields[0] ?? ""
 }
 
 export async function createDynamicMasterDataRecord(

@@ -3,10 +3,19 @@
 import { createFirestoreCrudService } from "@/lib/firebase/firestore-crud-service"
 import {
   FIRESTORE_COLLECTIONS,
+  type MasterCollectionFieldConfig,
   type MasterCollectionConfig,
 } from "@/types/firestore-models"
 
 const STORAGE_KEY = "masterCollectionConfigs:v1"
+
+function makeFieldConfigs(fields: string[], keyField = fields[0]): MasterCollectionFieldConfig[] {
+  return fields.map((name) => ({
+    name,
+    required: name === keyField,
+    unique: name === keyField,
+  }))
+}
 
 export const defaultMasterCollectionConfigs: MasterCollectionConfig[] = [
   {
@@ -14,6 +23,7 @@ export const defaultMasterCollectionConfigs: MasterCollectionConfig[] = [
     collectionName: "CusCodeList",
     displayName: "得意先・納入先リスト",
     fields: ["CusCode", "CusNameEng", "CusNameJP", "CusAddress"],
+    fieldConfigs: makeFieldConfigs(["CusCode", "CusNameEng", "CusNameJP", "CusAddress"]),
     active: true,
     systemDefault: true,
   },
@@ -22,6 +32,7 @@ export const defaultMasterCollectionConfigs: MasterCollectionConfig[] = [
     collectionName: "ItemCodeListMAV",
     displayName: "資材コード照合表 MAV",
     fields: ["MAVCode", "MHBCode", "IzuyoshiJPCode", "IzuyoshiVNCode", "Description"],
+    fieldConfigs: makeFieldConfigs(["MAVCode", "MHBCode", "IzuyoshiJPCode", "IzuyoshiVNCode", "Description"]),
     active: true,
     systemDefault: true,
   },
@@ -30,6 +41,7 @@ export const defaultMasterCollectionConfigs: MasterCollectionConfig[] = [
     collectionName: "ItemCodeListMHB",
     displayName: "資材コード照合表 MHB",
     fields: ["MHBCode", "MAVCode", "IzuyoshiJPCode", "IzuyoshiVNCode", "Description"],
+    fieldConfigs: makeFieldConfigs(["MHBCode", "MAVCode", "IzuyoshiJPCode", "IzuyoshiVNCode", "Description"]),
     active: true,
     systemDefault: true,
   },
@@ -38,6 +50,7 @@ export const defaultMasterCollectionConfigs: MasterCollectionConfig[] = [
     collectionName: "UnitPriceList",
     displayName: "単価リスト",
     fields: ["IzuyoshiJPCode", "UnitPrice"],
+    fieldConfigs: makeFieldConfigs(["IzuyoshiJPCode", "UnitPrice"]),
     active: true,
     systemDefault: true,
   },
@@ -46,6 +59,7 @@ export const defaultMasterCollectionConfigs: MasterCollectionConfig[] = [
     collectionName: "PIC.WH.CodeList",
     displayName: "担当者・倉庫コードリスト",
     fields: ["PICCode", "WarehouseCode", "DetailWarehouseCode"],
+    fieldConfigs: makeFieldConfigs(["PICCode", "WarehouseCode", "DetailWarehouseCode"]),
     active: true,
     systemDefault: true,
   },
@@ -54,6 +68,7 @@ export const defaultMasterCollectionConfigs: MasterCollectionConfig[] = [
     collectionName: "UnitCodeList",
     displayName: "単位リスト",
     fields: ["OrderUnit", "CsvCode"],
+    fieldConfigs: makeFieldConfigs(["OrderUnit", "CsvCode"]),
     active: true,
     systemDefault: true,
   },
@@ -71,11 +86,45 @@ function normalizeFieldList(fields: string[]) {
   return [...new Set(fields.map((field) => field.trim()).filter(Boolean))]
 }
 
+function normalizeFieldConfigs(
+  fields: string[],
+  fieldConfigs: MasterCollectionFieldConfig[] | undefined
+) {
+  const configByName = new Map(
+    (fieldConfigs ?? []).map((fieldConfig) => [fieldConfig.name.trim(), fieldConfig])
+  )
+  const normalized = fields.map((name, index) => {
+    const existing = configByName.get(name)
+    return {
+      name,
+      required: Boolean(existing?.required),
+      unique: Boolean(existing?.unique),
+    }
+  })
+
+  if (!normalized.some((fieldConfig) => fieldConfig.unique)) {
+    normalized[0] = {
+      ...normalized[0],
+      unique: true,
+      required: true,
+    }
+  }
+
+  return normalized.map((fieldConfig) => ({
+    ...fieldConfig,
+    required: fieldConfig.unique ? true : fieldConfig.required,
+  }))
+}
+
 export function normalizeMasterCollectionConfig(
   config: MasterCollectionConfig
 ): MasterCollectionConfig {
   const collectionName = config.collectionName.trim()
-  const fields = normalizeFieldList(config.fields)
+  const sourceFields = config.fieldConfigs?.length
+    ? config.fieldConfigs.map((fieldConfig) => fieldConfig.name)
+    : config.fields
+  const fields = normalizeFieldList(sourceFields)
+  const fieldConfigs = normalizeFieldConfigs(fields, config.fieldConfigs)
 
   return {
     ...config,
@@ -83,6 +132,7 @@ export function normalizeMasterCollectionConfig(
     collectionName,
     displayName: config.displayName.trim() || collectionName,
     fields,
+    fieldConfigs,
     active: config.active ?? true,
   }
 }
@@ -156,6 +206,7 @@ export const masterCollectionConfigRepository = {
       collectionName,
       displayName: collectionName,
       fields: ["id"],
+      fieldConfigs: makeFieldConfigs(["id"]),
       active: false,
     }
     const current = getLocalConfigs()

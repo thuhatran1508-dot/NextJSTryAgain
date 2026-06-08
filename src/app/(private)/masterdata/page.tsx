@@ -16,6 +16,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -54,11 +55,12 @@ import {
   masterCollectionConfigRepository,
   normalizeMasterCollectionConfig,
 } from "@/modules/masterdata/services/master-collection-config-services"
-import type { MasterCollectionConfig } from "@/types/firestore-models"
+import type { MasterCollectionConfig, MasterCollectionFieldConfig } from "@/types/firestore-models"
 
 const MASTER_DATA_CHANGED_STORAGE_KEY = "master-data:changed-at"
 
 type RecordDialogMode = "create" | "edit"
+type FieldDraft = MasterCollectionFieldConfig
 
 function notifyMasterDataChanged() {
   if (typeof window === "undefined") return
@@ -73,8 +75,41 @@ function normalizeSearchText(value: unknown) {
   return normalizeText(value).toLowerCase()
 }
 
-function normalizeFieldList(fields: string[]) {
-  return [...new Set(fields.map((field) => field.trim()).filter(Boolean))]
+function normalizeFieldDrafts(fields: FieldDraft[]) {
+  const seen = new Set<string>()
+  const normalized = fields
+    .map((field) => ({
+      name: field.name.trim(),
+      required: Boolean(field.required),
+      unique: Boolean(field.unique),
+    }))
+    .filter((field) => {
+      if (!field.name || seen.has(field.name)) return false
+      seen.add(field.name)
+      return true
+    })
+
+  if (normalized.length && !normalized.some((field) => field.unique)) {
+    normalized[0] = { ...normalized[0], required: true, unique: true }
+  }
+
+  return normalized
+}
+
+function getFieldConfigs(config: MasterCollectionConfig) {
+  const byName = new Map((config.fieldConfigs ?? []).map((field) => [field.name, field]))
+  const fieldConfigs = config.fields.map((field) => ({
+    name: field,
+    required: Boolean(byName.get(field)?.required),
+    unique: Boolean(byName.get(field)?.unique),
+  }))
+  if (!fieldConfigs.some((field) => field.unique) && fieldConfigs[0]) {
+    fieldConfigs[0] = { ...fieldConfigs[0], required: true, unique: true }
+  }
+  return fieldConfigs.map((field) => ({
+    ...field,
+    required: field.unique ? true : field.required,
+  }))
 }
 
 function makeEmptyRecord(config: MasterCollectionConfig): DynamicMasterDataRecord {
@@ -82,7 +117,7 @@ function makeEmptyRecord(config: MasterCollectionConfig): DynamicMasterDataRecor
 }
 
 function getLookupKeyField(config: MasterCollectionConfig) {
-  return config.fields[0] ?? ""
+  return getFieldConfigs(config).find((field) => field.unique)?.name ?? config.fields[0] ?? ""
 }
 
 function getLookupKeyValue(config: MasterCollectionConfig, record: DynamicMasterDataRecord) {
@@ -103,6 +138,34 @@ function matchesRecordSearch(
   return config.fields.some((field) =>
     normalizeSearchText(record[field]).includes(normalizedQuery)
   )
+}
+
+function validateRecord(
+  config: MasterCollectionConfig,
+  record: DynamicMasterDataRecord,
+  existingRows: DynamicMasterDataRecord[],
+  excludeId = ""
+) {
+  const errors: string[] = []
+  const fieldConfigs = getFieldConfigs(config)
+
+  fieldConfigs.forEach((fieldConfig) => {
+    const value = normalizeText(record[fieldConfig.name])
+    if (fieldConfig.required && !value) {
+      errors.push(`${fieldConfig.name} は必須です。`)
+    }
+    if (fieldConfig.unique && value) {
+      const duplicated = existingRows.some((row) => {
+        if (excludeId && getRecordId(config, row) === excludeId) return false
+        return normalizeText(row[fieldConfig.name]) === value
+      })
+      if (duplicated) {
+        errors.push(`${fieldConfig.name} は重複できません。`)
+      }
+    }
+  })
+
+  return errors
 }
 
 function exportRows(
@@ -147,7 +210,7 @@ export default function MasterDataPage() {
   const [configDraft, setConfigDraft] = useState({
     collectionName: "",
     displayName: "",
-    fields: [""],
+    fields: [{ name: "", required: true, unique: true }] as FieldDraft[],
   })
   const [recordDialogOpen, setRecordDialogOpen] = useState(false)
   const [recordDialogMode, setRecordDialogMode] = useState<RecordDialogMode>("create")
@@ -203,7 +266,7 @@ export default function MasterDataPage() {
     setConfigDraft({
       collectionName: "",
       displayName: "",
-      fields: [""],
+      fields: [{ name: "", required: true, unique: true }],
     })
     setConfigDialogOpen(true)
   }
@@ -213,13 +276,14 @@ export default function MasterDataPage() {
     setConfigDraft({
       collectionName: config.collectionName,
       displayName: config.displayName,
-      fields: [...config.fields],
+      fields: getFieldConfigs(config),
     })
     setConfigDialogOpen(true)
   }
 
   async function saveConfig() {
-    const fields = normalizeFieldList(configDraft.fields)
+    const fieldConfigs = normalizeFieldDrafts(configDraft.fields)
+    const fields = fieldConfigs.map((field) => field.name)
     const collectionName = configDraft.collectionName.trim()
     if (!collectionName || !fields.length) {
       toast.error("データリストIDとフィールドを入力してください。")
@@ -234,6 +298,7 @@ export default function MasterDataPage() {
           collectionName,
           displayName: configDraft.displayName || collectionName,
           fields,
+          fieldConfigs,
           active: true,
           systemDefault: editingConfig?.systemDefault,
         })
@@ -276,14 +341,34 @@ export default function MasterDataPage() {
   function updateConfigField(index: number, value: string) {
     setConfigDraft((current) => ({
       ...current,
-      fields: current.fields.map((field, fieldIndex) => (fieldIndex === index ? value : field)),
+      fields: current.fields.map((field, fieldIndex) =>
+        fieldIndex === index ? { ...field, name: value } : field
+      ),
+    }))
+  }
+
+  function updateConfigFieldFlag(
+    index: number,
+    key: "required" | "unique",
+    value: boolean
+  ) {
+    setConfigDraft((current) => ({
+      ...current,
+      fields: current.fields.map((field, fieldIndex) => {
+        if (fieldIndex !== index) return field
+        return {
+          ...field,
+          [key]: value,
+          required: key === "unique" && value ? true : field.required,
+        }
+      }),
     }))
   }
 
   function addConfigField() {
     setConfigDraft((current) => ({
       ...current,
-      fields: [...current.fields, ""],
+      fields: [...current.fields, { name: "", required: false, unique: false }],
     }))
   }
 
@@ -338,6 +423,16 @@ export default function MasterDataPage() {
       const normalizedRecord = Object.fromEntries(
         activeConfig.fields.map((field) => [field, normalizeText(recordDraft[field])])
       )
+      const errors = validateRecord(
+        activeConfig,
+        normalizedRecord,
+        activeRows,
+        recordDialogMode === "edit" ? editingRecordId : ""
+      )
+      if (errors.length) {
+        toast.error(errors[0])
+        return
+      }
 
       if (recordDialogMode === "create") {
         await createDynamicMasterDataRecord(activeConfig, normalizedRecord)
@@ -393,7 +488,15 @@ export default function MasterDataPage() {
     setSaving(true)
     try {
       const rows = await parseImportFile(file, activeConfig)
-      const validRows = rows.filter((row) => getLookupKeyValue(activeConfig, row))
+      const validRows: DynamicMasterDataRecord[] = []
+      for (const [index, row] of rows.entries()) {
+        const errors = validateRecord(activeConfig, row, [...activeRows, ...validRows])
+        if (errors.length) {
+          toast.error(`${index + 2} 行目: ${errors[0]}`)
+          return
+        }
+        validRows.push(row)
+      }
       for (const row of validRows) {
         await createDynamicMasterDataRecord(activeConfig, row)
       }
@@ -663,13 +766,37 @@ export default function MasterDataPage() {
             <div className="grid gap-2">
               <Label>フィールド</Label>
               <div className="grid gap-2">
+                <div className="hidden grid-cols-[1fr_80px_100px_132px] gap-2 text-xs font-medium text-muted-foreground sm:grid">
+                  <div>フィールド名</div>
+                  <div>必須</div>
+                  <div>重複不可</div>
+                  <div />
+                </div>
                 {configDraft.fields.map((field, index) => (
-                  <div key={`${index}-${field}`} className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                  <div key={index} className="grid gap-2 sm:grid-cols-[1fr_80px_100px_auto]">
                     <Input
-                      value={field}
+                      value={field.name}
                       onChange={(event) => updateConfigField(index, event.target.value)}
                       placeholder={index === 0 ? "キー項目" : "フィールド名"}
                     />
+                    <label className="flex h-9 items-center gap-2 rounded-md border px-3 text-sm">
+                      <Checkbox
+                        checked={Boolean(field.required)}
+                        onCheckedChange={(checked) =>
+                          updateConfigFieldFlag(index, "required", checked === true)
+                        }
+                      />
+                      <span className="sm:hidden">必須</span>
+                    </label>
+                    <label className="flex h-9 items-center gap-2 rounded-md border px-3 text-sm">
+                      <Checkbox
+                        checked={Boolean(field.unique)}
+                        onCheckedChange={(checked) =>
+                          updateConfigFieldFlag(index, "unique", checked === true)
+                        }
+                      />
+                      <span className="sm:hidden">重複不可</span>
+                    </label>
                     <div className="flex gap-1">
                       <Button
                         type="button"
@@ -747,11 +874,11 @@ export default function MasterDataPage() {
           </DialogHeader>
           {activeConfig ? (
             <div className="grid max-h-[60vh] gap-4 overflow-auto pr-1">
-              {activeConfig.fields.map((field, index) => (
+              {activeConfig.fields.map((field) => (
                 <div key={field} className="grid gap-2">
                   <Label>
                     {field}
-                    {index === 0 ? " (キー項目)" : ""}
+                    {field === getLookupKeyField(activeConfig) ? " (キー項目)" : ""}
                   </Label>
                   <Input
                     value={normalizeText(recordDraft[field])}
@@ -761,7 +888,7 @@ export default function MasterDataPage() {
                         [field]: event.target.value,
                       }))
                     }
-                    disabled={recordDialogMode === "edit" && index === 0}
+                    disabled={recordDialogMode === "edit" && field === getLookupKeyField(activeConfig)}
                   />
                 </div>
               ))}
