@@ -340,8 +340,21 @@ export async function readExcelByMapping(
     const sheet = workbook.Sheets[sheetName]
     sheetValues[sheetName] = getSheetValues(sheet)
     const range = XLSX.utils.decode_range(sheet["!ref"] ?? "A1:A1")
+    let lastDetailRowIndex = -1
 
     for (let rowIndex = startRowIndex; rowIndex <= range.e.r; rowIndex += 1) {
+      const validColumnAddress = XLSX.utils.encode_cell({
+        r: rowIndex,
+        c: columnNameToIndex(validColumn),
+      })
+      if (normalizeText(getSheetCell(sheet, validColumnAddress))) {
+        lastDetailRowIndex = rowIndex
+      }
+    }
+
+    if (lastDetailRowIndex < startRowIndex) continue
+
+    for (let rowIndex = startRowIndex; rowIndex <= lastDetailRowIndex; rowIndex += 1) {
       const valuesByColumn: Record<string, unknown> = {}
       for (let columnIndex = range.s.c; columnIndex <= range.e.c; columnIndex += 1) {
         const column = XLSX.utils.encode_col(columnIndex)
@@ -349,16 +362,14 @@ export async function readExcelByMapping(
         valuesByColumn[column] = getSheetCell(sheet, address)
       }
 
-      if (normalizeText(valuesByColumn[validColumn])) {
-        sourceRows.push({
-          id: `${sheetName}-${rowIndex + 1}`,
-          rowIndex,
-          rowNumber: rowIndex + 1,
-          sheetName,
-          fileName: file.name,
-          valuesByColumn,
-        })
-      }
+      sourceRows.push({
+        id: `${sheetName}-${rowIndex + 1}`,
+        rowIndex,
+        rowNumber: rowIndex + 1,
+        sheetName,
+        fileName: file.name,
+        valuesByColumn,
+      })
     }
   }
 
