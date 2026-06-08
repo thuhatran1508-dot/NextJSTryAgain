@@ -17,7 +17,6 @@ import {
   FilePlus2,
   FileSpreadsheet,
   GripVertical,
-  LogOut,
   Maximize2,
   RefreshCw,
   Save,
@@ -491,27 +490,11 @@ export function CsvCreatePageContent() {
   }
 
   function startNewSession() {
-    if (sessionOpen) {
-      toast.info("現在の作業セッションを閉じてから新規セッションを開始してください。")
-      return
-    }
-
     const firstUsable = mappings.find(isMappingUsable)
     setSessionOpen(true)
     setSessionId(createSessionId())
     clearWorkingData(selectedMappingId || firstUsable?.id || "")
     toast.success("新しい作業セッションを開始しました。")
-  }
-
-  function closeCurrentSession() {
-    if (!sessionOpen) return
-    const shouldClose = window.confirm("現在の作業セッションを閉じますか。作業中のデータは破棄されます。")
-    if (!shouldClose) return
-
-    setSessionOpen(false)
-    setSessionId("")
-    clearWorkingData(selectedMappingId)
-    toast.info("作業セッションを閉じました。")
   }
 
   async function refreshDerivedValues(options: { silent?: boolean } = {}) {
@@ -800,13 +783,9 @@ export function CsvCreatePageContent() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" onClick={startNewSession} disabled={sessionOpen || mappingLoading || processing}>
+          <Button type="button" variant="outline" onClick={startNewSession} disabled={mappingLoading || processing}>
             <FilePlus2 className="size-4" />
             新規セッション
-          </Button>
-          <Button type="button" variant="outline" onClick={closeCurrentSession} disabled={!sessionOpen || processing}>
-            <LogOut className="size-4" />
-            セッション終了
           </Button>
           <Button
             type="button"
