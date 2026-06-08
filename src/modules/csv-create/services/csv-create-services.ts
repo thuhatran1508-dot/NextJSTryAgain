@@ -195,6 +195,10 @@ function parseNumberValue(value: unknown) {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+function isCharacterLimitCondition(condition: ImportMappingFormatCondition) {
+  return condition === "left32" || condition === "left25"
+}
+
 function applyOneFormat(value: unknown, condition: ImportMappingFormatCondition) {
   const text = replaceNewlines(value)
 
@@ -228,11 +232,17 @@ function applyOneFormat(value: unknown, condition: ImportMappingFormatCondition)
   return { value: text }
 }
 
-export function formatCsvValue(value: unknown, entry: ImportMappingEntry) {
+export function formatCsvValue(
+  value: unknown,
+  entry: ImportMappingEntry,
+  options: { applyCharacterLimits?: boolean } = {}
+) {
   let nextValue = value
   const errors: string[] = []
+  const applyCharacterLimits = options.applyCharacterLimits ?? true
 
   for (const condition of getFormatConditions(entry)) {
+    if (!applyCharacterLimits && isCharacterLimitCondition(condition)) continue
     const result = applyOneFormat(nextValue, condition)
     nextValue = result.value
     if (result.error) errors.push(result.error)
@@ -253,7 +263,9 @@ function formatRowCell(
   const cell = row.values[column]
   if (!cell) return
 
-  const result = formatCsvValue(cell.rawValue ?? cell.value, entry)
+  const result = formatCsvValue(cell.rawValue ?? cell.value, entry, {
+    applyCharacterLimits: false,
+  })
   cell.value = result.value
   if (result.errors.length) {
     cell.issueTypes = [...(cell.issueTypes ?? []), "format"]
@@ -364,6 +376,10 @@ function getColumnName(mapping: ImportMappingConfig, column: CsvColumnLetter) {
     getEntryColumns(item).includes(column)
   )
   return entry?.targetColumnName || column
+}
+
+function getColumnEntry(mapping: ImportMappingConfig, column: CsvColumnLetter) {
+  return sortMappingEntries(mapping.entries).find((item) => getEntryColumns(item).includes(column))
 }
 
 function setCell(draft: RowDraft, entry: ImportMappingEntry, value: unknown, source: CsvCellSource) {
@@ -779,7 +795,13 @@ export function exportRowsToCsv(
 ) {
   const columns = getSortedOutputColumns(mapping)
   const header = columns.map((column) => getColumnName(mapping, column))
-  const body = rows.map((row) => columns.map((column) => row.values[column]?.value ?? ""))
+  const body = rows.map((row) =>
+    columns.map((column) => {
+      const value = row.values[column]?.value ?? ""
+      const entry = getColumnEntry(mapping, column)
+      return entry ? formatCsvValue(value, entry, { applyCharacterLimits: true }).value : value
+    })
+  )
   const csv = [header, ...body].map((line) => line.map(escapeCsvValue).join(",")).join("\r\n")
   return options.bom === false ? csv : `\uFEFF${csv}`
 }
