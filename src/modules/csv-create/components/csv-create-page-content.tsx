@@ -27,6 +27,14 @@ import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
@@ -53,9 +61,16 @@ import {
   getCsvColumnIndex,
   sortMappingEntries,
 } from "@/modules/import-mapping/services/import-mapping-types"
+import {
+  createDynamicMasterDataRecord,
+  type DynamicMasterDataRecord,
+} from "@/modules/masterdata/services/masterdata-services"
+import { masterCollectionConfigRepository } from "@/modules/masterdata/services/master-collection-config-services"
 import type {
   CsvColumnLetter,
   ImportMappingConfig,
+  ImportMappingEntry,
+  MasterCollectionConfig,
 } from "@/types/firestore-models"
 
 import {
@@ -172,6 +187,45 @@ function makeExportName(sourceFileName?: string) {
   return `${baseName}-${stamp}.csv`
 }
 
+function getRowValueByColumnName(row: CsvWorkingRow, columnName: string) {
+  const normalizedColumnName = columnName.trim()
+  if (!normalizedColumnName) return ""
+
+  const matchedCell = Object.values(row.values).find((cell) => {
+    return cell?.columnName?.trim() === normalizedColumnName
+  })
+
+  return matchedCell?.value ?? ""
+}
+
+function buildMasterDataDraftFromCsvRow({
+  config,
+  entry,
+  row,
+  editedValue,
+}: {
+  config: MasterCollectionConfig
+  entry: ImportMappingEntry
+  row: CsvWorkingRow
+  editedValue: string
+}) {
+  return Object.fromEntries(
+    config.fields.map((field) => {
+      if (field === entry.lookupKeyField && entry.lookupCsvColumn) {
+        return [field, row.values[entry.lookupCsvColumn]?.value ?? ""]
+      }
+      if (field === entry.lookupValueField) {
+        return [field, editedValue]
+      }
+      if (field === "Description") {
+        return [field, getRowValueByColumnName(row, "商品名")]
+      }
+
+      return [field, getRowValueByColumnName(row, field)]
+    })
+  ) as DynamicMasterDataRecord
+}
+
 const CSV_SESSION_STORAGE_KEY = "csv-create-working-session"
 const MASTER_DATA_CHANGED_STORAGE_KEY = "master-data:changed-at"
 const MIN_CSV_COLUMN_WIDTH = 72
@@ -196,6 +250,14 @@ interface CsvCellSelection {
   startColumn: CsvColumnLetter
   endRowId: string
   endColumn: CsvColumnLetter
+}
+
+interface PendingMasterDataSave {
+  config: MasterCollectionConfig
+  entry: ImportMappingEntry
+  row: CsvWorkingRow
+  column: CsvColumnLetter
+  draft: DynamicMasterDataRecord
 }
 
 interface CsvCreateSessionState {
@@ -332,6 +394,7 @@ function storeSessionState(state: CsvCreateSessionState) {
 
 export function CsvCreatePageContent() {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const lookupSavePromptedRef = useRef<Set<string>>(new Set())
   const initialSessionRef = useRef<CsvCreateSessionState | null>(null)
   if (!initialSessionRef.current) initialSessionRef.current = loadStoredSessionState()
   const initialSession = initialSessionRef.current
@@ -355,6 +418,10 @@ export function CsvCreatePageContent() {
   const [masterDataStore, setMasterDataStore] = useState<MasterDataLookupStore | null>(null)
   const [isExpanded, setIsExpanded] = useState(false)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(initialSession.hasUnsavedChanges)
+  const [pendingMasterDataSave, setPendingMasterDataSave] =
+    useState<PendingMasterDataSave | null>(null)
+  const [masterDataDraft, setMasterDataDraft] = useState<DynamicMasterDataRecord>({})
+  const [savingMasterData, setSavingMasterData] = useState(false)
 
   const selectedMapping = useMemo(
     () => mappings.find((mapping) => mapping.id === selectedMappingId) ?? null,
@@ -692,6 +759,96 @@ export function CsvCreatePageContent() {
     setHasUnsavedChanges(true)
   }
 
+  async function maybeOpenMasterDataSaveDialog(
+    rowId: string,
+    column: CsvColumnLetter,
+    value: string
+  ) {
+    if (!selectedMapping || !sessionOpen) return
+    const row = draftRows.find((draftRow) => draftRow.id === rowId)
+    const cell = row?.values[column]
+    if (!row || !cell || cell.source !== "masterLookup" || !cell.mappingEntryId) return
+    if (!value.trim()) return
+
+    const originalValue = rows.find((savedRow) => savedRow.id === rowId)?.values[column]?.value ?? ""
+    if (value === originalValue) return
+
+    const promptKey = `${rowId}:${column}:${value}`
+    if (lookupSavePromptedRef.current.has(promptKey)) return
+    lookupSavePromptedRef.current.add(promptKey)
+
+    const entry = selectedMapping.entries.find((mappingEntry) => mappingEntry.id === cell.mappingEntryId)
+    if (!entry || entry.dataSource !== "masterLookup" || !entry.lookupCollection) return
+
+    const shouldSave = window.confirm("マスタデータに保存しますか？")
+    if (!shouldSave) return
+
+    try {
+      const configs = await masterCollectionConfigRepository.list()
+      const config = configs.find(
+        (masterConfig) => masterConfig.collectionName === entry.lookupCollection
+      )
+      if (!config) {
+        toast.error("マスタデータ設定が見つかりません。")
+        return
+      }
+
+      const draft = buildMasterDataDraftFromCsvRow({
+        config,
+        entry,
+        row,
+        editedValue: value,
+      })
+      setPendingMasterDataSave({
+        config,
+        entry,
+        row,
+        column,
+        draft,
+      })
+      setMasterDataDraft(draft)
+    } catch {
+      toast.error("マスタデータ設定を読み込めませんでした。")
+    }
+  }
+
+  function commitCell(rowId: string, column: CsvColumnLetter, value: string) {
+    maybeFillStaticColumn(rowId, column, value)
+    void maybeOpenMasterDataSaveDialog(rowId, column, value)
+  }
+
+  async function savePendingMasterData() {
+    if (!pendingMasterDataSave) return
+    const keyField = pendingMasterDataSave.config.fields[0] ?? ""
+    if (!String(masterDataDraft[keyField] ?? "").trim()) {
+      toast.error(`${keyField} を入力してください。`)
+      return
+    }
+
+    setSavingMasterData(true)
+    try {
+      const saved = await createDynamicMasterDataRecord(
+        pendingMasterDataSave.config,
+        masterDataDraft
+      )
+      const collectionName = pendingMasterDataSave.config.collectionName
+      setMasterDataStore((currentStore) => ({
+        ...(currentStore ?? {}),
+        [collectionName]: [
+          ...((currentStore?.[collectionName] as Array<Record<string, unknown>> | undefined) ?? []),
+          saved as Record<string, unknown>,
+        ],
+      }))
+      setPendingMasterDataSave(null)
+      setMasterDataDraft({})
+      toast.success("マスタデータに保存しました。")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "マスタデータを保存できませんでした。")
+    } finally {
+      setSavingMasterData(false)
+    }
+  }
+
   function updateCell(rowId: string, column: CsvColumnLetter, value: string) {
     applyCellEdits([{ rowId, column, value }])
   }
@@ -758,7 +915,7 @@ export function CsvCreatePageContent() {
       issueByCell={issueByCell}
       onChangeCell={updateCell}
       onPasteCells={applyCellEdits}
-      onCommitCell={maybeFillStaticColumn}
+      onCommitCell={commitCell}
       onChangeColumnWidth={(column, width) => {
         setColumnWidths((currentWidths) => ({ ...currentWidths, [column]: width }))
       }}
@@ -919,6 +1076,64 @@ export function CsvCreatePageContent() {
           </div>
         )}
       </div>
+
+      <Dialog
+        open={Boolean(pendingMasterDataSave)}
+        onOpenChange={(open) => {
+          if (open) return
+          setPendingMasterDataSave(null)
+          setMasterDataDraft({})
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>マスタデータ保存</DialogTitle>
+            <DialogDescription>
+              CSVの入力内容をマスタデータに保存します。
+            </DialogDescription>
+          </DialogHeader>
+          {pendingMasterDataSave ? (
+            <div className="grid max-h-[60vh] gap-3 overflow-auto py-1">
+              <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                <div className="font-medium">{pendingMasterDataSave.config.displayName}</div>
+                <div className="text-xs text-muted-foreground">
+                  データリストID: {pendingMasterDataSave.config.collectionName}
+                </div>
+              </div>
+              {pendingMasterDataSave.config.fields.map((field) => (
+                <div key={field} className="grid gap-2">
+                  <Label>{field}</Label>
+                  <Input
+                    value={String(masterDataDraft[field] ?? "")}
+                    onChange={(event) =>
+                      setMasterDataDraft((currentDraft) => ({
+                        ...currentDraft,
+                        [field]: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setPendingMasterDataSave(null)
+                setMasterDataDraft({})
+              }}
+              disabled={savingMasterData}
+            >
+              キャンセル
+            </Button>
+            <Button type="button" onClick={() => void savePendingMasterData()} disabled={savingMasterData}>
+              保存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {isExpanded && selectedMapping ? (
         <div className="fixed inset-4 z-50 flex flex-col rounded-md border bg-background shadow-2xl">
