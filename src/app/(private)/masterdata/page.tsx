@@ -175,13 +175,21 @@ async function parseImportFile(file: File, config: MasterCollectionConfig) {
   const buffer = await file.arrayBuffer()
   const workbook = XLSX.read(buffer, { type: "array" })
   const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
-  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, {
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(firstSheet, {
+    header: 1,
     defval: "",
+    blankrows: false,
   })
 
-  return rows.map((row) =>
-    Object.fromEntries(config.fields.map((field) => [field, normalizeText(row[field])]))
-  ) as DynamicMasterDataRecord[]
+  return rows
+    .slice(1)
+    .map((row) =>
+      Object.fromEntries(
+        config.fields.map((field, index) => [field, normalizeText(row[index])])
+      )
+    )
+    .filter((row) => config.fields.some((field) => normalizeText(row[field])))
+    .map((row) => row as DynamicMasterDataRecord)
 }
 
 export default function MasterDataPage() {
