@@ -8,6 +8,7 @@ export const FIRESTORE_COLLECTIONS = {
   fixedValueConfigHistory: "fixedValueConfigHistory",
   importMappingConfigs: "importMappingConfigs",
   importMappingConfigHistory: "importMappingConfigHistory",
+  masterCollectionConfigs: "masterCollectionConfigs",
   importBatches: "importBatches",
   importBatchRows: "importBatchRows",
   validationIssues: "validationIssues",
@@ -28,12 +29,16 @@ export type BatchStatus =
   | "exported_with_missing_data"
 
 export type ValidationSeverity = "error" | "warning" | "info"
-export type MissingMasterDataType =
-  | "CusCodeList"
-  | "ItemCodeList"
-  | "UnitPriceList"
-  | "PIC.WH.CodeList"
-  | "UnitCodeList"
+export type MissingMasterDataType = string
+
+export interface MasterCollectionConfig extends AuditFields {
+  id: string
+  collectionName: string
+  displayName: string
+  fields: string[]
+  active?: boolean
+  systemDefault?: boolean
+}
 
 export type ImportMappingSourceType =
   | "sheetCell"

@@ -75,6 +75,8 @@ const csvColumnOrder = new Map<string, number>(
 export const MASTER_COLLECTION_FIELDS: Record<MissingMasterDataType, string[]> = {
   CusCodeList: ["CusCode", "CusNameEng", "CusNameJP", "CusAddress"],
   ItemCodeList: ["MAVCode", "MHBCode", "IzuyoshiJPCode", "IzuyoshiVNCode", "Description"],
+  ItemCodeListMAV: ["MAVCode", "MHBCode", "IzuyoshiJPCode", "IzuyoshiVNCode", "Description"],
+  ItemCodeListMHB: ["MHBCode", "MAVCode", "IzuyoshiJPCode", "IzuyoshiVNCode", "Description"],
   UnitPriceList: ["IzuyoshiJPCode", "UnitPrice"],
   "PIC.WH.CodeList": ["PICCode", "WarehouseCode", "DetailWarehouseCode"],
   UnitCodeList: ["OrderUnit", "CsvCode"],

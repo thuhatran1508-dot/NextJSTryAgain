@@ -8,17 +8,16 @@ import {
   createPICWHCodeList,
   createUnitCodeList,
   createUnitPriceList,
-  getCusCodeList,
-  getItemCodeList,
-  getPICWHCodeList,
-  getUnitCodeList,
-  getUnitPriceList,
+  getDynamicMasterData,
   type CusCodeListItem,
   type ItemCodeListItem,
   type PICWHCodeListItem,
   type UnitCodeListItem,
   type UnitPriceListItem,
 } from "@/modules/masterdata/services/masterdata-services"
+import {
+  masterCollectionConfigRepository,
+} from "@/modules/masterdata/services/master-collection-config-services"
 import type {
   CsvColumnLetter,
   ImportMappingConfig,
@@ -54,6 +53,8 @@ type RowDraft = Partial<Record<CsvColumnLetter, CsvWorkingCell>>
 const MASTER_DATA_LABELS: Record<MissingMasterDataType, string> = {
   CusCodeList: "得意先マスタ",
   ItemCodeList: "品目マスタ",
+  ItemCodeListMAV: "品目マスタMAV",
+  ItemCodeListMHB: "品目マスタMHB",
   UnitPriceList: "単価マスタ",
   "PIC.WH.CodeList": "担当者・倉庫マスタ",
   UnitCodeList: "単位マスタ",
@@ -83,6 +84,11 @@ function makeIssue(input: Omit<CsvValidationIssue, "id" | "severity"> & {
     severity: input.severity ?? "warning",
     ...input,
   }
+}
+
+function getMasterDataLabel(collection: MissingMasterDataType | undefined) {
+  if (!collection) return "マスタデータ"
+  return MASTER_DATA_LABELS[collection] ?? collection
 }
 
 function columnNameToIndex(column: string) {
@@ -550,7 +556,7 @@ export function buildCsvRowsFromMapping(options: BuildCsvRowsOptions): BuildCsvR
             issueType: "masterLookup",
             missingMasterDataType: entry.lookupCollection,
             sourceValue: result.sourceValue,
-            message: `${MASTER_DATA_LABELS[entry.lookupCollection ?? "CusCodeList"]}に該当データがありません。`,
+            message: `${getMasterDataLabel(entry.lookupCollection)}に該当データがありません。`,
             suggestedAction: "マスタデータを追加するか、元データを確認してください。",
           })
         )
@@ -691,7 +697,7 @@ export function refreshDerivedCsvRows({
             issueType: "masterLookup",
             missingMasterDataType: entry.lookupCollection,
             sourceValue: result.sourceValue,
-            message: `${MASTER_DATA_LABELS[entry.lookupCollection ?? "CusCodeList"]}に該当データがありません。`,
+            message: `${getMasterDataLabel(entry.lookupCollection)}に該当データがありません。`,
             suggestedAction: "マスタデータを追加するか、元データを確認してください。",
           })
         )
@@ -771,21 +777,15 @@ export function summarizeIssues(rows: CsvWorkingRow[], issues: CsvValidationIssu
 }
 
 export async function loadMasterDataStore(): Promise<MasterDataLookupStore> {
-  const [cus, item, price, picwh, unit] = await Promise.all([
-    getCusCodeList(),
-    getItemCodeList(),
-    getUnitPriceList(),
-    getPICWHCodeList(),
-    getUnitCodeList(),
-  ])
+  const configs = await masterCollectionConfigRepository.list()
+  const entries = await Promise.all(
+    configs.map(async (config) => {
+      const rows = await getDynamicMasterData(config)
+      return [config.collectionName, rows as Array<Record<string, unknown>>] as const
+    })
+  )
 
-  return {
-    CusCodeList: cus as Array<Record<string, unknown>>,
-    ItemCodeList: item as Array<Record<string, unknown>>,
-    UnitPriceList: price as Array<Record<string, unknown>>,
-    "PIC.WH.CodeList": picwh as Array<Record<string, unknown>>,
-    UnitCodeList: unit as Array<Record<string, unknown>>,
-  }
+  return Object.fromEntries(entries) as MasterDataLookupStore
 }
 
 export function exportRowsToCsv(

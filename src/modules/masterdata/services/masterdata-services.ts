@@ -4,6 +4,7 @@ import {
   createFirestoreCrudService,
   makeSafeDocumentId,
 } from "@/lib/firebase/firestore-crud-service"
+import type { MasterCollectionConfig } from "@/types/firestore-models"
 
 export type CusCodeListItem = {
   id?: string
@@ -41,6 +42,13 @@ export type UnitCodeListItem = {
   CsvCode?: string
 }
 
+export type DynamicMasterDataRecord = {
+  id?: string
+  documentId?: string
+  baseDocumentId?: string
+  [key: string]: unknown
+}
+
 const emptyCusCodeData: CusCodeListItem[] = []
 const emptyItemCodeData: ItemCodeListItem[] = []
 const emptyUnitPriceData: UnitPriceListItem[] = []
@@ -65,6 +73,71 @@ export async function getPICWHCodeList(): Promise<PICWHCodeListItem[]> {
 
 export async function getUnitCodeList(): Promise<UnitCodeListItem[]> {
   return getFirestoreCollection<UnitCodeListItem>("UnitCodeList", emptyUnitCodeData)
+}
+
+export async function getDynamicMasterData(
+  config: MasterCollectionConfig
+): Promise<DynamicMasterDataRecord[]> {
+  return getFirestoreCollection<DynamicMasterDataRecord>(config.collectionName, [])
+}
+
+export function getLookupKeyField(config: MasterCollectionConfig) {
+  return config.fields[0] ?? ""
+}
+
+export async function createDynamicMasterDataRecord(
+  config: MasterCollectionConfig,
+  record: DynamicMasterDataRecord
+) {
+  const lookupKeyField = getLookupKeyField(config)
+  const lookupKey = String(record[lookupKeyField] ?? "").trim()
+  if (!lookupKeyField || !lookupKey) {
+    throw new Error("Lookup key is required.")
+  }
+
+  const service = createFirestoreCrudService<DynamicMasterDataRecord>(config.collectionName)
+  const documentId = makeSafeDocumentId(lookupKey)
+  return service.create(
+    {
+      ...record,
+      [lookupKeyField]: lookupKey,
+      id: documentId,
+      documentId,
+      baseDocumentId: documentId,
+    },
+    documentId
+  )
+}
+
+export async function updateDynamicMasterDataRecord(
+  config: MasterCollectionConfig,
+  id: string,
+  record: DynamicMasterDataRecord
+) {
+  const lookupKeyField = getLookupKeyField(config)
+  const currentKey = String(record[lookupKeyField] ?? "").trim()
+  if (!lookupKeyField || !currentKey) {
+    throw new Error("Lookup key is required.")
+  }
+  if (makeSafeDocumentId(currentKey) !== id) {
+    throw new Error("Lookup key cannot be changed. Create a new record instead.")
+  }
+
+  const service = createFirestoreCrudService<DynamicMasterDataRecord>(config.collectionName)
+  return service.update(id, {
+    ...record,
+    [lookupKeyField]: currentKey,
+    documentId: id,
+    baseDocumentId: id,
+  })
+}
+
+export async function deleteDynamicMasterDataRecord(
+  config: MasterCollectionConfig,
+  id: string
+) {
+  const service = createFirestoreCrudService<DynamicMasterDataRecord>(config.collectionName)
+  return service.delete(id)
 }
 
 const cusCodeCrud = createFirestoreCrudService<CusCodeListItem>("CusCodeList")

@@ -61,14 +61,12 @@ import type {
   ImportMappingEntry,
   ImportMappingFormatCondition,
   ImportMappingOrderFileMode,
-  MissingMasterDataType,
+  MasterCollectionConfig,
 } from "@/types/firestore-models"
 
 import { createDefaultImportMappingConfig } from "../services/default-import-mapping"
 import { mappingConfigRepository } from "../services/import-mapping-services"
 import {
-  MASTER_COLLECTION_FIELDS,
-  MASTER_COLLECTIONS,
   createEmptyMappingEntry,
   makeMappingId,
   parseCsvColumns,
@@ -79,6 +77,9 @@ import {
   type MappingValidationIssue,
   validateImportMappingConfig,
 } from "../services/import-mapping-validation"
+import {
+  masterCollectionConfigRepository,
+} from "@/modules/masterdata/services/master-collection-config-services"
 
 const dataSourceLabels: Record<ImportMappingDataSource, string> = {
   orderFile: "注文ファイルから取得",
@@ -162,6 +163,9 @@ export function MappingPageContent() {
   const [draft, setDraft] = React.useState<ImportMappingConfig | null>(null)
   const [issues, setIssues] = React.useState<MappingValidationIssue[]>([])
   const [histories, setHistories] = React.useState<ImportMappingConfigHistory[]>([])
+  const [masterCollectionConfigs, setMasterCollectionConfigs] = React.useState<
+    MasterCollectionConfig[]
+  >([])
   const [loading, setLoading] = React.useState(true)
   const [saving, setSaving] = React.useState(false)
   const [search, setSearch] = React.useState("")
@@ -201,6 +205,13 @@ export function MappingPageContent() {
   React.useEffect(() => {
     void loadMappings()
   }, [loadMappings])
+
+  React.useEffect(() => {
+    masterCollectionConfigRepository
+      .list()
+      .then(setMasterCollectionConfigs)
+      .catch(() => toast.error("マスタコレクション設定を読み込めませんでした。"))
+  }, [])
 
   React.useEffect(() => {
     if (!selectedMapping) return
@@ -677,6 +688,7 @@ export function MappingPageContent() {
                           key={entry.id}
                           entry={entry}
                           issues={issues}
+                          masterCollectionConfigs={masterCollectionConfigs}
                           onChange={(patch) => updateEntry(entry.id, patch)}
                           onAddBelow={() => insertEntryAfter(entry.id)}
                           onMoveUp={() => moveEntry(entry.id, "up")}
@@ -731,6 +743,7 @@ export function MappingPageContent() {
 function MappingEntryRow({
   entry,
   issues,
+  masterCollectionConfigs,
   onChange,
   onAddBelow,
   onMoveUp,
@@ -745,6 +758,7 @@ function MappingEntryRow({
 }: {
   entry: ImportMappingEntry
   issues: MappingValidationIssue[]
+  masterCollectionConfigs: MasterCollectionConfig[]
   onChange: (patch: Partial<ImportMappingEntry>) => void
   onAddBelow: () => void
   onMoveUp: () => void
@@ -806,7 +820,12 @@ function MappingEntryRow({
         </Select>
       </div>
       <div className="p-3">
-        <EntryDetailFields entry={entry} issues={issues} onChange={onChange} />
+        <EntryDetailFields
+          entry={entry}
+          issues={issues}
+          masterCollectionConfigs={masterCollectionConfigs}
+          onChange={onChange}
+        />
       </div>
       <div className="col-span-3 flex flex-wrap items-center gap-2 p-3 pt-0">
         <label className="flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm">
@@ -860,13 +879,24 @@ function MappingEntryRow({
 function EntryDetailFields({
   entry,
   issues,
+  masterCollectionConfigs,
   onChange,
 }: {
   entry: ImportMappingEntry
   issues: MappingValidationIssue[]
+  masterCollectionConfigs: MasterCollectionConfig[]
   onChange: (patch: Partial<ImportMappingEntry>) => void
 }) {
-  const lookupFields = MASTER_COLLECTION_FIELDS[entry.lookupCollection ?? "CusCodeList"]
+  const lookupCollection =
+    masterCollectionConfigs.find(
+      (config) => config.collectionName === (entry.lookupCollection ?? "CusCodeList")
+    ) ??
+    masterCollectionConfigs[0] ?? {
+      collectionName: "CusCodeList",
+      displayName: "CusCodeList",
+      fields: ["CusCode", "CusNameJP"],
+    }
+  const lookupFields = lookupCollection.fields.length ? lookupCollection.fields : ["id"]
 
   return (
     <div className="grid gap-3">
@@ -1013,12 +1043,14 @@ function EntryDetailFields({
           </Field>
           <Field label="マスタコレクション">
             <Select
-              value={entry.lookupCollection ?? "CusCodeList"}
+              value={entry.lookupCollection ?? lookupCollection.collectionName}
               onValueChange={(value) => {
-                const lookupCollection = value as MissingMasterDataType
-                const fields = MASTER_COLLECTION_FIELDS[lookupCollection]
+                const nextCollection =
+                  masterCollectionConfigs.find((config) => config.collectionName === value) ??
+                  lookupCollection
+                const fields = nextCollection.fields.length ? nextCollection.fields : ["id"]
                 onChange({
-                  lookupCollection,
+                  lookupCollection: nextCollection.collectionName,
                   lookupKeyField: fields[0],
                   lookupValueField: fields[1] ?? fields[0],
                 })
@@ -1028,9 +1060,9 @@ function EntryDetailFields({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {MASTER_COLLECTIONS.map((collection) => (
-                  <SelectItem key={collection} value={collection}>
-                    {collection}
+                {masterCollectionConfigs.map((collection) => (
+                  <SelectItem key={collection.collectionName} value={collection.collectionName}>
+                    {collection.displayName || collection.collectionName}
                   </SelectItem>
                 ))}
               </SelectContent>
