@@ -7,6 +7,8 @@ import {
 import {
   collection,
   deleteField,
+  doc,
+  getDoc,
   getDocs,
   writeBatch,
   type DocumentData,
@@ -86,6 +88,34 @@ export async function getDynamicMasterData(
   config: MasterCollectionConfig
 ): Promise<DynamicMasterDataRecord[]> {
   return getFirestoreCollection<DynamicMasterDataRecord>(config.collectionName, [])
+}
+
+export async function getDynamicMasterDataByKeys(
+  config: Pick<MasterCollectionConfig, "collectionName">,
+  keys: string[]
+): Promise<DynamicMasterDataRecord[]> {
+  const db = getFirestoreSafe()
+  if (!db) {
+    throw new Error(
+      "Firebase is not configured. Please set NEXT_PUBLIC_FIREBASE_* environment variables."
+    )
+  }
+
+  const uniqueKeys = [...new Set(keys.map((key) => key.trim()).filter(Boolean))]
+  const snapshots = await Promise.all(
+    uniqueKeys.map(async (key) => {
+      const documentId = makeSafeDocumentId(key)
+      const snapshot = await getDoc(doc(db, config.collectionName, documentId))
+      return snapshot.exists()
+        ? ({
+            id: snapshot.id,
+            ...snapshot.data(),
+          } as DynamicMasterDataRecord)
+        : null
+    })
+  )
+
+  return snapshots.filter((record): record is DynamicMasterDataRecord => Boolean(record))
 }
 
 export function getLookupKeyField(config: MasterCollectionConfig) {

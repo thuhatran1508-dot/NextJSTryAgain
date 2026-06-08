@@ -8,7 +8,7 @@ import {
   createPICWHCodeList,
   createUnitCodeList,
   createUnitPriceList,
-  getDynamicMasterData,
+  getDynamicMasterDataByKeys,
   type CusCodeListItem,
   type ItemCodeListItem,
   type PICWHCodeListItem,
@@ -23,6 +23,7 @@ import type {
   ImportMappingConfig,
   ImportMappingEntry,
   ImportMappingFormatCondition,
+  MasterCollectionConfig,
   MissingMasterDataType,
 } from "@/types/firestore-models"
 import {
@@ -776,16 +777,186 @@ export function summarizeIssues(rows: CsvWorkingRow[], issues: CsvValidationIssu
   }
 }
 
-export async function loadMasterDataStore(): Promise<MasterDataLookupStore> {
-  const configs = await masterCollectionConfigRepository.list()
+type LookupKeyRequests = Map<string, Set<string>>
+
+function getLookupRequestKey(collection: string, sourceValue: string) {
+  return `${collection}:${sourceValue}`
+}
+
+function cloneMasterDataStore(store: MasterDataLookupStore = {}) {
+  return Object.fromEntries(
+    Object.entries(store).map(([collection, records]) => [collection, [...(records ?? [])]])
+  ) as MasterDataLookupStore
+}
+
+function mergeMasterDataStore(
+  baseStore: MasterDataLookupStore,
+  nextStore: MasterDataLookupStore
+) {
+  const merged = cloneMasterDataStore(baseStore)
+
+  Object.entries(nextStore).forEach(([collection, records]) => {
+    const existing = merged[collection] ?? []
+    const existingIds = new Set(existing.map((record) => normalizeText(record.id)))
+    const nextRecords = (records ?? []).filter((record) => {
+      const id = normalizeText(record.id)
+      return !id || !existingIds.has(id)
+    })
+    merged[collection] = [...existing, ...nextRecords]
+  })
+
+  return merged
+}
+
+function collectLookupRequestsFromIssues(
+  issues: CsvValidationIssue[],
+  attemptedKeys: Set<string>
+) {
+  const requests: LookupKeyRequests = new Map()
+
+  issues.forEach((issue) => {
+    if (issue.issueType !== "masterLookup") return
+    if (!issue.missingMasterDataType || !issue.sourceValue) return
+    const sourceValue = normalizeText(issue.sourceValue)
+    if (!sourceValue) return
+
+    const requestKey = getLookupRequestKey(issue.missingMasterDataType, sourceValue)
+    if (attemptedKeys.has(requestKey)) return
+
+    const values = requests.get(issue.missingMasterDataType) ?? new Set<string>()
+    values.add(sourceValue)
+    requests.set(issue.missingMasterDataType, values)
+  })
+
+  return requests
+}
+
+function collectLookupRequestsFromRows(
+  rows: CsvWorkingRow[],
+  mapping: ImportMappingConfig,
+  attemptedKeys: Set<string>
+) {
+  const requests: LookupKeyRequests = new Map()
+
+  sortMappingEntries(mapping.entries).forEach((entry) => {
+    if (entry.dataSource !== "masterLookup") return
+    if (!entry.lookupCollection || !entry.lookupCsvColumn) return
+
+    rows.forEach((row) => {
+      const sourceValue = normalizeText(row.values[entry.lookupCsvColumn!]?.value)
+      if (!sourceValue) return
+
+      const requestKey = getLookupRequestKey(entry.lookupCollection!, sourceValue)
+      if (attemptedKeys.has(requestKey)) return
+
+      const values = requests.get(entry.lookupCollection!) ?? new Set<string>()
+      values.add(sourceValue)
+      requests.set(entry.lookupCollection!, values)
+    })
+  })
+
+  return requests
+}
+
+async function loadRequestedMasterData(
+  requests: LookupKeyRequests,
+  configsByCollection: Map<string, MasterCollectionConfig>,
+  attemptedKeys: Set<string>
+) {
   const entries = await Promise.all(
-    configs.map(async (config) => {
-      const rows = await getDynamicMasterData(config)
-      return [config.collectionName, rows as Array<Record<string, unknown>>] as const
+    [...requests.entries()].map(async ([collection, values]) => {
+      const keys = [...values]
+      keys.forEach((key) => attemptedKeys.add(getLookupRequestKey(collection, key)))
+      const config = configsByCollection.get(collection) ?? {
+        id: collection,
+        collectionName: collection,
+        displayName: collection,
+        fields: [],
+      }
+      const records = await getDynamicMasterDataByKeys(config, keys)
+      return [collection, records as Array<Record<string, unknown>>] as const
     })
   )
 
   return Object.fromEntries(entries) as MasterDataLookupStore
+}
+
+async function getMasterConfigsByCollection() {
+  const configs = await masterCollectionConfigRepository.list()
+  return new Map(configs.map((config) => [config.collectionName, config]))
+}
+
+export async function loadMasterDataStoreForMapping({
+  mapping,
+  excel,
+  manualInputs,
+}: {
+  mapping: ImportMappingConfig
+  excel: ExcelImportResult
+  manualInputs?: Record<string, string>
+}) {
+  const configsByCollection = await getMasterConfigsByCollection()
+  const attemptedKeys = new Set<string>()
+  let masterData: MasterDataLookupStore = {}
+  const maxIterations =
+    mapping.entries.filter((entry) => entry.dataSource === "masterLookup").length + 1
+
+  for (let index = 0; index < maxIterations; index += 1) {
+    const result = buildCsvRowsFromMapping({
+      mapping,
+      excel,
+      masterData,
+      manualInputs,
+    })
+    const requests = collectLookupRequestsFromIssues(result.issues, attemptedKeys)
+    if (!requests.size) break
+    const nextMasterData = await loadRequestedMasterData(
+      requests,
+      configsByCollection,
+      attemptedKeys
+    )
+    masterData = mergeMasterDataStore(masterData, nextMasterData)
+  }
+
+  return masterData
+}
+
+export async function loadMasterDataStoreForRows({
+  rows,
+  mapping,
+}: {
+  rows: CsvWorkingRow[]
+  mapping: ImportMappingConfig
+}) {
+  const configsByCollection = await getMasterConfigsByCollection()
+  const attemptedKeys = new Set<string>()
+  let masterData: MasterDataLookupStore = {}
+  const maxIterations =
+    mapping.entries.filter((entry) => entry.dataSource === "masterLookup").length + 1
+
+  for (let index = 0; index < maxIterations; index += 1) {
+    const requests =
+      index === 0
+        ? collectLookupRequestsFromRows(rows, mapping, attemptedKeys)
+        : collectLookupRequestsFromIssues(
+            refreshDerivedCsvRows({
+              rows,
+              mapping,
+              masterData,
+              existingIssues: [],
+            }).issues,
+            attemptedKeys
+          )
+    if (!requests.size) break
+    const nextMasterData = await loadRequestedMasterData(
+      requests,
+      configsByCollection,
+      attemptedKeys
+    )
+    masterData = mergeMasterDataStore(masterData, nextMasterData)
+  }
+
+  return masterData
 }
 
 export function exportRowsToCsv(

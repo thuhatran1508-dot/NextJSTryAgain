@@ -62,7 +62,8 @@ import {
   buildCsvRowsFromMapping,
   downloadCsv,
   exportRowsToCsv,
-  loadMasterDataStore,
+  loadMasterDataStoreForMapping,
+  loadMasterDataStoreForRows,
   readExcelByMapping,
   refreshDerivedCsvRows,
   validateCsvRows,
@@ -501,7 +502,10 @@ export function CsvCreatePageContent() {
     if (!sessionOpen || !selectedMapping || !draftRows.length) return
     setProcessing(true)
     try {
-      const nextMasterData = await loadMasterDataStore()
+      const nextMasterData = await loadMasterDataStoreForRows({
+        rows: draftRows,
+        mapping: selectedMapping,
+      })
       setMasterDataStore(nextMasterData)
       const refreshed = refreshDerivedCsvRows({
         rows: draftRows,
@@ -525,7 +529,11 @@ export function CsvCreatePageContent() {
     if (!sessionOpen || !selectedMapping || !lastExcel) return
     setProcessing(true)
     try {
-      const nextMasterData = await loadMasterDataStore()
+      const nextMasterData = await loadMasterDataStoreForMapping({
+        mapping: selectedMapping,
+        excel: lastExcel,
+        manualInputs: nextManualValues,
+      })
       setMasterDataStore(nextMasterData)
       const result = buildCsvRowsFromMapping({
         mapping: selectedMapping,
@@ -563,10 +571,12 @@ export function CsvCreatePageContent() {
 
     setProcessing(true)
     try {
-      const [excel, nextMasterData] = await Promise.all([
-        readExcelByMapping(file, selectedMapping),
-        loadMasterDataStore(),
-      ])
+      const excel = await readExcelByMapping(file, selectedMapping)
+      const nextMasterData = await loadMasterDataStoreForMapping({
+        mapping: selectedMapping,
+        excel,
+        manualInputs: manualValues,
+      })
       setMasterDataStore(nextMasterData)
       const result = buildCsvRowsFromMapping({
         mapping: selectedMapping,
