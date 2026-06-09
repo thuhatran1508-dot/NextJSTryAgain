@@ -164,6 +164,48 @@ function cloneRows(rows: CsvWorkingRow[]) {
   }))
 }
 
+function makeBlankCsvRows(mapping: ImportMappingConfig, count: number) {
+  const outputColumns = getOutputColumns(mapping)
+  const rows: CsvWorkingRow[] = []
+
+  for (let index = 0; index < count; index += 1) {
+    const rowId = `manual-row-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`
+    rows.push({
+      id: rowId,
+      rowNumber: 0,
+      sourceFileName: "",
+      sourceSheetName: "",
+      sourceRowNumber: 0,
+      values: Object.fromEntries(
+        outputColumns.map((column) => {
+          const entry = mapping ? getColumnEntry(mapping, column) : null
+          return [
+            column,
+            {
+              column,
+              columnName: entry?.targetColumnName || column,
+              value: "",
+              rawValue: "",
+              source: "manualInput",
+              mappingEntryId: entry?.id,
+              edited: true,
+            },
+          ]
+        })
+      ) as CsvWorkingRow["values"],
+    })
+  }
+
+  return rows
+}
+
+function renumberRows(rows: CsvWorkingRow[]) {
+  return rows.map((row, index) => ({
+    ...row,
+    rowNumber: index + 1,
+  }))
+}
+
 function removeResolvedCellIssues(rows: CsvWorkingRow[], issues: CsvValidationIssue[]) {
   const valueByKey = new Map<string, string>()
   rows.forEach((row) => {
@@ -259,6 +301,12 @@ interface CsvCellSelection {
   startColumn: CsvColumnLetter
   endRowId: string
   endColumn: CsvColumnLetter
+}
+
+interface CsvRowContextAction {
+  anchorRowId: string
+  selectedRowIds: string[]
+  visibleRowIds: string[]
 }
 
 interface PendingMasterDataSave {
@@ -734,6 +782,72 @@ export function CsvCreatePageContent() {
     setHasUnsavedChanges(true)
   }
 
+  function applyRowUpdate(nextRows: CsvWorkingRow[], deletedRowIds: string[] = []) {
+    const deletedRowIdSet = new Set(deletedRowIds)
+    const renumberedRows = renumberRows(nextRows)
+    const nextExistingIssues = deletedRowIdSet.size
+      ? issues.filter((issue) => !issue.rowId || !deletedRowIdSet.has(issue.rowId))
+      : issues
+
+    if (selectedMapping) {
+      const refreshed = refreshDerivedCsvRows({
+        rows: renumberedRows,
+        mapping: selectedMapping,
+        masterData: masterDataStore ?? {},
+        existingIssues: nextExistingIssues,
+      })
+      const nextIssues = validateCsvRows(refreshed.rows, refreshed.issues)
+      setDraftRows(refreshed.rows)
+      setIssues(nextIssues)
+    } else {
+      setDraftRows(renumberedRows)
+      setIssues(validateCsvRows(renumberedRows, nextExistingIssues))
+    }
+
+    setSortState(null)
+    setHasUnsavedChanges(true)
+  }
+
+  function getVisibleOrderedDraftRows(visibleRowIds: string[]) {
+    const rowsById = new Map(draftRows.map((row) => [row.id, row]))
+    const visibleRows = visibleRowIds
+      .map((rowId) => rowsById.get(rowId))
+      .filter((row): row is CsvWorkingRow => Boolean(row))
+    const remainingRows = draftRows.filter((row) => !visibleRowIds.includes(row.id))
+
+    return [...visibleRows, ...remainingRows]
+  }
+
+  function insertRowsBelowSelection(action: CsvRowContextAction) {
+    if (!sessionOpen || !selectedMapping) return
+    const selectedRowIdSet = new Set(action.selectedRowIds)
+    const orderedRows = getVisibleOrderedDraftRows(action.visibleRowIds)
+    const insertIndex = orderedRows.reduce((lastIndex, row, index) => {
+      return selectedRowIdSet.has(row.id) ? index : lastIndex
+    }, -1)
+    if (insertIndex < 0) return
+
+    const blankRows = makeBlankCsvRows(selectedMapping, Math.max(1, action.selectedRowIds.length))
+    const nextRows = [
+      ...orderedRows.slice(0, insertIndex + 1),
+      ...blankRows,
+      ...orderedRows.slice(insertIndex + 1),
+    ]
+    applyRowUpdate(nextRows)
+    toast.success(`${blankRows.length} 行を追加しました。`)
+  }
+
+  function deleteSelectedRows(action: CsvRowContextAction) {
+    if (!sessionOpen) return
+    const selectedRowIdSet = new Set(action.selectedRowIds)
+    if (!selectedRowIdSet.size) return
+    const orderedRows = getVisibleOrderedDraftRows(action.visibleRowIds)
+    const nextRows = orderedRows.filter((row) => !selectedRowIdSet.has(row.id))
+
+    applyRowUpdate(nextRows, action.selectedRowIds)
+    toast.success(`${action.selectedRowIds.length} 行を削除しました。`)
+  }
+
   function maybeFillStaticColumn(rowId: string, column: CsvColumnLetter, value: string) {
     if (!selectedMapping || !sessionOpen) return
     const editedCell = draftRows.find((row) => row.id === rowId)?.values[column]
@@ -1039,6 +1153,8 @@ export function CsvCreatePageContent() {
         )
       }}
       onChangeSort={setSortState}
+      onInsertRowsBelow={insertRowsBelowSelection}
+      onDeleteRows={deleteSelectedRows}
       expanded={isExpanded}
     />
   ) : null
@@ -1407,6 +1523,8 @@ function CsvWorkingTable({
   onChangeColumnWidth,
   onToggleColumn,
   onChangeSort,
+  onInsertRowsBelow,
+  onDeleteRows,
   expanded,
 }: {
   mapping: ImportMappingConfig
@@ -1422,9 +1540,16 @@ function CsvWorkingTable({
   onChangeColumnWidth: (column: CsvColumnLetter, width: number) => void
   onToggleColumn: (column: CsvColumnLetter) => void
   onChangeSort: (sortState: CsvSortState | null) => void
+  onInsertRowsBelow: (action: CsvRowContextAction) => void
+  onDeleteRows: (action: CsvRowContextAction) => void
   expanded: boolean
 }) {
   const [selection, setSelection] = useState<CsvCellSelection | null>(null)
+  const [rowContextMenu, setRowContextMenu] = useState<{
+    x: number
+    y: number
+    action: CsvRowContextAction
+  } | null>(null)
   const selectingRef = useRef(false)
   const cellInputRefs = useRef(new Map<string, HTMLInputElement>())
   const visibleTableColumns = useMemo(
@@ -1462,6 +1587,23 @@ function CsvWorkingTable({
     window.addEventListener("mouseup", stopSelecting)
     return () => window.removeEventListener("mouseup", stopSelecting)
   }, [])
+
+  useEffect(() => {
+    if (!rowContextMenu) return
+
+    function closeMenu() {
+      setRowContextMenu(null)
+    }
+
+    window.addEventListener("click", closeMenu)
+    window.addEventListener("resize", closeMenu)
+    window.addEventListener("scroll", closeMenu, true)
+    return () => {
+      window.removeEventListener("click", closeMenu)
+      window.removeEventListener("resize", closeMenu)
+      window.removeEventListener("scroll", closeMenu, true)
+    }
+  }, [rowContextMenu])
 
   function getColumnWidth(column: CsvColumnLetter) {
     return columnWidths[column] ?? autoColumnWidths[column] ?? DEFAULT_CSV_COLUMN_WIDTH
@@ -1567,6 +1709,15 @@ function CsvWorkingTable({
     )
   }
 
+  function getSelectedRowIdsFromBounds(bounds: NonNullable<ReturnType<typeof getSelectionBounds>>) {
+    const rowIds: string[] = []
+    for (let rowIndex = bounds.rowStart; rowIndex <= bounds.rowEnd; rowIndex += 1) {
+      const row = sortedRows[rowIndex]
+      if (row) rowIds.push(row.id)
+    }
+    return rowIds
+  }
+
   function hasMultiCellSelection() {
     const bounds = getSelectionBounds()
     if (!bounds) return false
@@ -1617,6 +1768,44 @@ function CsvWorkingTable({
         ? { ...currentSelection, endRowId: rowId, endColumn: column }
         : { startRowId: rowId, startColumn: column, endRowId: rowId, endColumn: column }
     )
+  }
+
+  function openRowContextMenu(
+    event: ReactMouseEvent<HTMLElement>,
+    rowId: string,
+    column: CsvColumnLetter
+  ) {
+    event.preventDefault()
+    event.stopPropagation()
+    selectingRef.current = false
+
+    const currentBounds = getSelectionBounds()
+    const clickedRowIndex = sortedRows.findIndex((row) => row.id === rowId)
+    const clickedColumnIndex = effectiveColumns.indexOf(column)
+    const clickedInsideSelection =
+      currentBounds &&
+      clickedRowIndex >= currentBounds.rowStart &&
+      clickedRowIndex <= currentBounds.rowEnd &&
+      clickedColumnIndex >= currentBounds.columnStart &&
+      clickedColumnIndex <= currentBounds.columnEnd
+    const nextSelection = clickedInsideSelection
+      ? selection
+      : { startRowId: rowId, startColumn: column, endRowId: rowId, endColumn: column }
+
+    if (!clickedInsideSelection) setSelection(nextSelection)
+
+    const nextBounds = getSelectionBounds(nextSelection)
+    const selectedRowIds = nextBounds ? getSelectedRowIdsFromBounds(nextBounds) : [rowId]
+
+    setRowContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      action: {
+        anchorRowId: rowId,
+        selectedRowIds,
+        visibleRowIds: sortedRows.map((row) => row.id),
+      },
+    })
   }
 
   function handleCopy(event: ReactClipboardEvent<HTMLInputElement>) {
@@ -1721,6 +1910,38 @@ function CsvWorkingTable({
         </DropdownMenu>
       </div>
       <div className={expanded ? "min-h-0 flex-1 overflow-auto" : "max-h-[68vh] overflow-auto"}>
+      {rowContextMenu ? (
+        <div
+          role="menu"
+          className="fixed z-[70] min-w-52 rounded-md border bg-popover p-1 text-sm text-popover-foreground shadow-lg"
+          style={{ left: rowContextMenu.x, top: rowContextMenu.y }}
+          onClick={(event) => event.stopPropagation()}
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className="flex w-full items-center rounded-sm px-3 py-2 text-left outline-none hover:bg-accent focus:bg-accent"
+            onClick={() => {
+              onInsertRowsBelow(rowContextMenu.action)
+              setRowContextMenu(null)
+            }}
+          >
+            下に {rowContextMenu.action.selectedRowIds.length} 行を追加
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="flex w-full items-center rounded-sm px-3 py-2 text-left text-destructive outline-none hover:bg-accent focus:bg-accent"
+            onClick={() => {
+              onDeleteRows(rowContextMenu.action)
+              setRowContextMenu(null)
+            }}
+          >
+            選択した {rowContextMenu.action.selectedRowIds.length} 行を削除
+          </button>
+        </div>
+      ) : null}
       <table className="w-max min-w-full table-fixed border-separate border-spacing-0 text-sm">
         <colgroup>
           <col style={{ width: 64 }} />
@@ -1776,7 +1997,12 @@ function CsvWorkingTable({
         <tbody>
           {sortedRows.map((row) => (
             <tr key={row.id}>
-              <td className="sticky left-0 z-10 border-b border-r bg-background px-3 py-2 text-muted-foreground">
+              <td
+                className="sticky left-0 z-10 border-b border-r bg-background px-3 py-2 text-muted-foreground"
+                onContextMenu={(event) =>
+                  openRowContextMenu(event, row.id, effectiveColumns[0])
+                }
+              >
                 {row.rowNumber}
               </td>
               {effectiveColumns.map((column) => {
@@ -1827,8 +2053,11 @@ function CsvWorkingTable({
                     ].join(" ")}
                     style={{ width: columnWidth, minWidth: MIN_CSV_COLUMN_WIDTH }}
                     title={cellIssues.map((issue) => issue.message).join("\n")}
-                    onMouseDown={() => startCellSelection(row.id, column)}
+                    onMouseDown={(event) => {
+                      if (event.button === 0) startCellSelection(row.id, column)
+                    }}
                     onMouseEnter={() => extendCellSelection(row.id, column)}
+                    onContextMenu={(event) => openRowContextMenu(event, row.id, column)}
                   >
                     {showFullValue ? (
                       <Tooltip>
