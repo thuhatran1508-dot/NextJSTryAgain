@@ -76,6 +76,7 @@ import type {
 
 import {
   buildCsvRowsFromMapping,
+  clearCsvMasterDataLookupCache,
   downloadCsv,
   exportRowsToCsv,
   loadMasterDataStoreForMapping,
@@ -653,7 +654,10 @@ export function CsvCreatePageContent() {
     }
 
     const handleStorage = (event: StorageEvent) => {
-      if (event.key === MASTER_DATA_CHANGED_STORAGE_KEY) refreshSilently()
+      if (event.key === MASTER_DATA_CHANGED_STORAGE_KEY) {
+        clearCsvMasterDataLookupCache()
+        refreshSilently()
+      }
     }
     const handleFocus = () => refreshSilently()
     const handleVisibilityChange = () => {
@@ -1167,6 +1171,7 @@ export function CsvCreatePageContent() {
         pendingMasterDataSave.config,
         masterDataDraft
       )
+      clearCsvMasterDataLookupCache()
       const collectionName = pendingMasterDataSave.config.collectionName
       setMasterDataStore((currentStore) => ({
         ...(currentStore ?? {}),

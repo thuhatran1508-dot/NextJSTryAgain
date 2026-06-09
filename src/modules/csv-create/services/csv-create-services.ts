@@ -50,6 +50,23 @@ import { getEntryColumns, getIssueId } from "./csv-create-types"
 
 type SheetCellMap = Record<string, unknown>
 type RowDraft = Partial<Record<CsvColumnLetter, CsvWorkingCell>>
+type MasterLookupCacheEntry = {
+  record: Record<string, unknown> | null
+  cachedAt: number
+}
+
+const MASTER_LOOKUP_CACHE_TTL_MS = 10 * 60 * 1000
+const MASTER_CONFIG_CACHE_TTL_MS = 10 * 60 * 1000
+const masterLookupRecordCache = new Map<string, MasterLookupCacheEntry>()
+let masterConfigsByCollectionCache: {
+  cachedAt: number
+  configs: Map<string, MasterCollectionConfig>
+} | null = null
+
+export function clearCsvMasterDataLookupCache() {
+  masterLookupRecordCache.clear()
+  masterConfigsByCollectionCache = null
+}
 
 const MASTER_DATA_LABELS: Record<MissingMasterDataType, string> = {
   CusCodeList: "得意先マスタ",
@@ -892,14 +909,49 @@ async function loadRequestedMasterData(
     [...requests.entries()].map(async ([collection, values]) => {
       const keys = [...values]
       keys.forEach((key) => attemptedKeys.add(getLookupRequestKey(collection, key)))
+      const cachedRecords: Array<Record<string, unknown>> = []
+      const missingKeys = keys.filter((key) => {
+        const cacheKey = getLookupRequestKey(collection, key)
+        const cached = masterLookupRecordCache.get(cacheKey)
+        const cacheValid = cached && Date.now() - cached.cachedAt < MASTER_LOOKUP_CACHE_TTL_MS
+        if (!cacheValid) {
+          masterLookupRecordCache.delete(cacheKey)
+          return true
+        }
+        if (cached.record) cachedRecords.push(cached.record)
+        return false
+      })
+      if (!missingKeys.length) return [collection, cachedRecords] as const
+
       const config = configsByCollection.get(collection) ?? {
         id: collection,
         collectionName: collection,
         displayName: collection,
         fields: [],
       }
-      const records = await getDynamicMasterDataByKeys(config, keys)
-      return [collection, records as Array<Record<string, unknown>>] as const
+      const records = await getDynamicMasterDataByKeys(config, missingKeys)
+      const recordsByLookupKey = new Map<string, Record<string, unknown>>()
+      records.forEach((record) => {
+        const lookupKeyField = config.fields[0] ?? ""
+        const lookupKey = normalizeText(
+          lookupKeyField ? record[lookupKeyField] : record.baseDocumentId ?? record.documentId ?? record.id
+        )
+        if (lookupKey) {
+          recordsByLookupKey.set(lookupKey, record)
+          masterLookupRecordCache.set(getLookupRequestKey(collection, lookupKey), {
+            record,
+            cachedAt: Date.now(),
+          })
+        }
+      })
+      missingKeys.forEach((key) => {
+        if (recordsByLookupKey.has(key)) return
+        masterLookupRecordCache.set(getLookupRequestKey(collection, key), {
+          record: null,
+          cachedAt: Date.now(),
+        })
+      })
+      return [collection, [...cachedRecords, ...(records as Array<Record<string, unknown>>)]] as const
     })
   )
 
@@ -907,8 +959,20 @@ async function loadRequestedMasterData(
 }
 
 async function getMasterConfigsByCollection() {
+  if (
+    masterConfigsByCollectionCache &&
+    Date.now() - masterConfigsByCollectionCache.cachedAt < MASTER_CONFIG_CACHE_TTL_MS
+  ) {
+    return masterConfigsByCollectionCache.configs
+  }
+
   const configs = await masterCollectionConfigRepository.list()
-  return new Map(configs.map((config) => [config.collectionName, config]))
+  const configsByCollection = new Map(configs.map((config) => [config.collectionName, config]))
+  masterConfigsByCollectionCache = {
+    cachedAt: Date.now(),
+    configs: configsByCollection,
+  }
+  return configsByCollection
 }
 
 export async function loadMasterDataStoreForMapping({

@@ -113,8 +113,15 @@ export async function getDynamicMasterDataByKeys(
   const records = await Promise.all(
     uniqueKeys.map(async (key) => {
       const documentId = makeSafeDocumentId(key)
-      const matches = await getDynamicMasterDataByBaseDocumentId(config, documentId)
-      return matches[0] ?? null
+      if (!documentId) return null
+
+      const snapshot = await getDoc(doc(db, config.collectionName, documentId))
+      return snapshot.exists()
+        ? ({
+            id: snapshot.id,
+            ...snapshot.data(),
+          } as DynamicMasterDataRecord)
+        : null
     })
   )
 
