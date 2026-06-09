@@ -4,6 +4,7 @@ import {
   GoogleAuthProvider,
   signInWithEmailAndPassword,
   signInWithPopup,
+  sendPasswordResetEmail,
   signOut,
   updateProfile,
 } from "firebase/auth"
@@ -31,6 +32,12 @@ export async function signOutUser() {
   const auth = getAuthSafe()
   if (!auth) return
   return signOut(auth)
+}
+
+export async function sendPasswordReset(email: string) {
+  const auth = getAuthSafe()
+  if (!auth) throw new Error("Firebase is not configured")
+  return sendPasswordResetEmail(auth, email)
 }
 
 export async function signUpWithEmailPassword(

@@ -83,6 +83,7 @@ export function ThemeCustomizer({ open, onOpenChange }: ThemeCustomizerProps) {
       <Sheet open={open} onOpenChange={onOpenChange} modal={false}>
         <SheetContent
           side={sidebarConfig.side === "left" ? "right" : "left"}
+          showOverlay={false}
           className="w-[400px] p-0 gap-0 pointer-events-auto [&>button]:hidden overflow-hidden flex flex-col"
           onInteractOutside={(e) => {
             // Prevent the sheet from closing when dialog is open
