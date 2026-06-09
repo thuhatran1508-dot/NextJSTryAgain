@@ -151,6 +151,7 @@ export function createEmptyMappingEntry(
     lookupTargetColumn: "A",
     format: "original",
     formatConditions: ["original"],
+    includeInCsvDownload: true,
     scope: "sheet",
     note: "",
     ...seed,

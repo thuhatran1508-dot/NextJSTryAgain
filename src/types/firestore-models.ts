@@ -230,6 +230,7 @@ export interface ImportMappingEntry {
   format: ImportMappingDataFormat
   formatConditions?: ImportMappingFormatCondition[]
   hideInCompactView?: boolean
+  includeInCsvDownload?: boolean
   scope: ImportMappingScope
   note?: string
 }

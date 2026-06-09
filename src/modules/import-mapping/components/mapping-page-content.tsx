@@ -827,7 +827,7 @@ function MappingEntryRow({
           onChange={onChange}
         />
       </div>
-      <div className="col-span-3 flex flex-wrap items-center gap-2 p-3 pt-0">
+      <div className="col-span-3 flex flex-wrap items-center gap-2 px-3 pb-3">
         <label className="flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm">
           <Checkbox
             checked={Boolean(entry.hideInCompactView)}
@@ -835,6 +835,15 @@ function MappingEntryRow({
           />
           <span>簡易表示で非表示</span>
         </label>
+        <label className="flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm">
+          <Checkbox
+            checked={entry.includeInCsvDownload !== false}
+            onCheckedChange={(checked) => onChange({ includeInCsvDownload: checked === true })}
+          />
+          <span>CSVダウンロード時に表示</span>
+        </label>
+      </div>
+      <div className="col-span-3 flex flex-wrap items-center gap-2 p-3 pt-0">
         <Button type="button" size="sm" variant="outline" onClick={onAddBelow}>
           <Plus className="size-4" />
           下に追加

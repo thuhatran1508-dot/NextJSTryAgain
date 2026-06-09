@@ -989,7 +989,10 @@ export function exportRowsToCsv(
   mapping: ImportMappingConfig,
   options: { bom?: boolean } = { bom: true }
 ) {
-  const columns = getSortedOutputColumns(mapping)
+  const columns = getSortedOutputColumns(mapping).filter((column) => {
+    const entry = getColumnEntry(mapping, column)
+    return entry?.includeInCsvDownload !== false
+  })
   const header = columns.map((column) => getColumnName(mapping, column))
   const body = rows.map((row) =>
     columns.map((column) => {
