@@ -914,6 +914,7 @@ export function CsvCreatePageContent() {
 
     const entry = selectedMapping.entries.find((mappingEntry) => mappingEntry.id === cell.mappingEntryId)
     if (!entry || entry.dataSource !== "masterLookup" || !entry.lookupCollection) return
+    if (!shouldQueueMasterDataSave({ rowId, column, cell, entry })) return
 
     const shouldSave = window.confirm("マスタデータに保存しますか？")
     if (!shouldSave) return
@@ -954,6 +955,27 @@ export function CsvCreatePageContent() {
     }
   }
 
+  function shouldQueueMasterDataSave(input: {
+    rowId: string
+    column: CsvColumnLetter
+    cell: NonNullable<CsvWorkingRow["values"][CsvColumnLetter]>
+    entry: ImportMappingEntry
+  }) {
+    if (input.entry.dataSource !== "masterLookup" || !input.entry.lookupCollection) return false
+
+    const originalRow = rows.find((savedRow) => savedRow.id === input.rowId)
+    const originalCell = originalRow?.values[input.column]
+    if (!originalCell || originalCell.source !== "masterLookup") return false
+    if (String(originalCell.value ?? "").trim()) return false
+
+    const lookupColumn = input.entry.lookupCsvColumn
+    const lookupValue = lookupColumn
+      ? String(originalRow?.values[lookupColumn]?.value ?? "").trim()
+      : ""
+
+    return Boolean(lookupValue && String(input.cell.value ?? "").trim())
+  }
+
   function commitCell(rowId: string, column: CsvColumnLetter, value: string) {
     maybeFillStaticColumn(rowId, column, value)
   }
@@ -990,6 +1012,16 @@ export function CsvCreatePageContent() {
           (mappingEntry) => mappingEntry.id === cell.mappingEntryId
         )
         if (!entry || entry.dataSource !== "masterLookup" || !entry.lookupCollection) return
+        if (
+          !shouldQueueMasterDataSave({
+            rowId: row.id,
+            column: column as CsvColumnLetter,
+            cell,
+            entry,
+          })
+        ) {
+          return
+        }
 
         const editKey = getMasterDataEditKey({
           mappingId: selectedMapping.id,
