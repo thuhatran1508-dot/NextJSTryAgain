@@ -322,6 +322,7 @@ function getMasterDataEditKey(input: {
 }
 
 const CSV_SESSION_STORAGE_KEY = "csv-create-working-session"
+const CSV_LATEST_MANUAL_VALUES_STORAGE_KEY = "csv-create-latest-manual-values"
 const MASTER_DATA_CHANGED_STORAGE_KEY = "master-data:changed-at"
 const MIN_CSV_COLUMN_WIDTH = 72
 const MAX_AUTO_CSV_COLUMN_WIDTH = 280
@@ -404,6 +405,32 @@ function getEmptySessionState(selectedMappingId = ""): CsvCreateSessionState {
 
 function createSessionId() {
   return `csv-session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function loadLatestManualValues(mappingId: string) {
+  if (typeof window === "undefined" || !mappingId) return {}
+
+  try {
+    const stored = window.localStorage.getItem(CSV_LATEST_MANUAL_VALUES_STORAGE_KEY)
+    if (!stored) return {}
+    const parsed = JSON.parse(stored) as Record<string, Record<string, string>>
+    return parsed[mappingId] ?? {}
+  } catch {
+    return {}
+  }
+}
+
+function storeLatestManualValues(mappingId: string, values: Record<string, string>) {
+  if (typeof window === "undefined" || !mappingId) return
+
+  try {
+    const stored = window.localStorage.getItem(CSV_LATEST_MANUAL_VALUES_STORAGE_KEY)
+    const parsed = stored ? (JSON.parse(stored) as Record<string, Record<string, string>>) : {}
+    parsed[mappingId] = values
+    window.localStorage.setItem(CSV_LATEST_MANUAL_VALUES_STORAGE_KEY, JSON.stringify(parsed))
+  } catch {
+    // The current session still keeps the values even if persistent storage is unavailable.
+  }
 }
 
 function loadStoredSessionState() {
@@ -646,6 +673,7 @@ export function CsvCreatePageContent() {
 
   function clearWorkingData(nextSelectedMappingId = selectedMappingId) {
     setSelectedMappingId(nextSelectedMappingId)
+    const latestManualValues = loadLatestManualValues(nextSelectedMappingId)
     setDisplayMode("full")
     setColumnWidths({})
     setHiddenColumns([])
@@ -654,7 +682,7 @@ export function CsvCreatePageContent() {
     setDraftRows([])
     setIssues([])
     setManualInputs([])
-    setManualValues({})
+    setManualValues(latestManualValues)
     setSourceFileName("")
     setLastExcel(null)
     setMasterDataStore(null)
@@ -1166,10 +1194,14 @@ export function CsvCreatePageContent() {
   }
 
   function updateManualValue(entryId: string, value: string) {
-    setManualValues((currentValues) => ({
-      ...currentValues,
-      [entryId]: value,
-    }))
+    setManualValues((currentValues) => {
+      const nextValues = {
+        ...currentValues,
+        [entryId]: value,
+      }
+      storeLatestManualValues(selectedMappingId, nextValues)
+      return nextValues
+    })
   }
 
   function saveEdits() {
@@ -1333,6 +1365,8 @@ export function CsvCreatePageContent() {
               setSortState(null)
               setLastExcel(null)
               setSourceFileName("")
+              setManualInputs([])
+              setManualValues(loadLatestManualValues(value))
               setHasUnsavedChanges(false)
             }}
             disabled={!sessionOpen || mappingLoading || processing}
