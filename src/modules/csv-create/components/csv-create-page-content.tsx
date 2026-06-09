@@ -26,6 +26,7 @@ import {
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { useConfirmDialog } from "@/components/confirm-dialog"
 import {
   Dialog,
   DialogContent,
@@ -483,6 +484,7 @@ export function CsvCreatePageContent() {
   const [savedMasterDataEditKeys, setSavedMasterDataEditKeys] = useState<Set<string>>(
     () => new Set()
   )
+  const confirmDialog = useConfirmDialog()
 
   const selectedMapping = useMemo(
     () => mappings.find((mapping) => mapping.id === selectedMappingId) ?? null,
@@ -848,7 +850,7 @@ export function CsvCreatePageContent() {
     toast.success(`${action.selectedRowIds.length} 行を削除しました。`)
   }
 
-  function maybeFillStaticColumn(rowId: string, column: CsvColumnLetter, value: string) {
+  async function maybeFillStaticColumn(rowId: string, column: CsvColumnLetter, value: string) {
     if (!selectedMapping || !sessionOpen) return
     const editedCell = draftRows.find((row) => row.id === rowId)?.values[column]
     if (!editedCell?.edited) return
@@ -859,7 +861,9 @@ export function CsvCreatePageContent() {
       (entry.dataSource === "orderFile" && entry.orderFileMode === "fixedCell")
     if (!isStaticColumn) return
 
-    const shouldFill = window.confirm("同じ値をこの列の残りすべての行に入力しますか。")
+    const shouldFill = await confirmDialog.confirm({
+      description: "同じ値をこの列の残りすべての行に入力しますか。",
+    })
     if (!shouldFill) return
 
     const nextRows = draftRows.map((row) => {
@@ -916,7 +920,9 @@ export function CsvCreatePageContent() {
     if (!entry || entry.dataSource !== "masterLookup" || !entry.lookupCollection) return
     if (!shouldQueueMasterDataSave({ rowId, column, cell, entry })) return
 
-    const shouldSave = window.confirm("マスタデータに保存しますか？")
+    const shouldSave = await confirmDialog.confirm({
+      description: "マスタデータに保存しますか？",
+    })
     if (!shouldSave) return
 
     try {
@@ -977,7 +983,7 @@ export function CsvCreatePageContent() {
   }
 
   function commitCell(rowId: string, column: CsvColumnLetter, value: string) {
-    maybeFillStaticColumn(rowId, column, value)
+    void maybeFillStaticColumn(rowId, column, value)
   }
 
   function openPendingMasterDataDialog(queue: PendingMasterDataSave[]) {
@@ -1137,7 +1143,7 @@ export function CsvCreatePageContent() {
     toast.info("変更を破棄しました。")
   }
 
-  function exportCsv() {
+  async function exportCsv() {
     if (!sessionOpen) {
       toast.error("先に新規セッションを開始してください。")
       return
@@ -1147,13 +1153,15 @@ export function CsvCreatePageContent() {
       return
     }
     if (hasUnsavedChanges) {
-      const shouldContinue = window.confirm("未保存の変更があります。保存せずにエクスポートしますか。")
+      const shouldContinue = await confirmDialog.confirm({
+        description: "未保存の変更があります。保存せずにエクスポートしますか。",
+      })
       if (!shouldContinue) return
     }
     if (issues.length) {
-      const shouldContinue = window.confirm(
-        `未解決の警告が${issues.length}件あります。空欄を含むCSVを出力しますか。`
-      )
+      const shouldContinue = await confirmDialog.confirm({
+        description: `未解決の警告が${issues.length}件あります。空欄を含むCSVを出力しますか。`,
+      })
       if (!shouldContinue) return
     }
 
@@ -1248,7 +1256,7 @@ export function CsvCreatePageContent() {
             <Save className="size-4" />
             保存
           </Button>
-          <Button type="button" onClick={exportCsv} disabled={!sessionOpen || !rows.length}>
+          <Button type="button" onClick={() => void exportCsv()} disabled={!sessionOpen || !rows.length}>
             <Download className="size-4" />
             CSV出力
           </Button>
@@ -1260,10 +1268,12 @@ export function CsvCreatePageContent() {
           <Label>マッピング</Label>
           <Select
             value={selectedMappingId}
-            onValueChange={(value) => {
+            onValueChange={async (value) => {
               if (!sessionOpen) return
               if (hasUnsavedChanges) {
-                const shouldChange = window.confirm("未保存の変更を破棄してマッピングを変更しますか。")
+                const shouldChange = await confirmDialog.confirm({
+                  description: "未保存の変更を破棄してマッピングを変更しますか。",
+                })
                 if (!shouldChange) return
               }
               setSelectedMappingId(value)
@@ -1437,7 +1447,7 @@ export function CsvCreatePageContent() {
                 <Save className="size-4" />
                 保存
               </Button>
-              <Button size="sm" onClick={exportCsv}>
+              <Button size="sm" onClick={() => void exportCsv()}>
                 <Download className="size-4" />
                 CSV出力
               </Button>
@@ -1450,6 +1460,7 @@ export function CsvCreatePageContent() {
           <div className="min-h-0 flex-1">{table}</div>
         </div>
       ) : null}
+      {confirmDialog.dialog}
     </div>
   )
 }

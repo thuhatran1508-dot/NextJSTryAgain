@@ -5,6 +5,7 @@ import { ArrowDown, ArrowUp, Loader2, Pencil, Plus, Search, Trash2 } from "lucid
 import { toast } from "sonner"
 import * as XLSX from "xlsx"
 
+import { useConfirmDialog } from "@/components/confirm-dialog"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -190,15 +191,15 @@ function collectDuplicateFieldWarnings(
   return [...warningsByKey.values()]
 }
 
-function confirmDuplicateFieldWarnings(warnings: DuplicateFieldWarning[]) {
-  if (!warnings.length) return true
+function getDuplicateFieldWarningMessage(warnings: DuplicateFieldWarning[]) {
+  if (!warnings.length) return ""
 
   const preview = warnings
     .slice(0, 8)
     .map((warning) => `${warning.field}: ${warning.value}`)
     .join("\n")
   const extraCount = warnings.length > 8 ? `\n...他 ${warnings.length - 8} 件` : ""
-  return window.confirm(`既に存在する内容があります。\n${preview}${extraCount}\n保存しますか？`)
+  return `既に存在する内容があります。\n${preview}${extraCount}\n保存しますか？`
 }
 
 function exportRows(
@@ -273,6 +274,7 @@ export default function MasterDataPage() {
     total: 0,
   })
   const importInputRef = useRef<HTMLInputElement | null>(null)
+  const confirmDialog = useConfirmDialog()
 
   const activeConfig = useMemo(
     () => configs.find((config) => config.collectionName === activeCollection) ?? null,
@@ -473,7 +475,13 @@ export default function MasterDataPage() {
         activeRows,
         recordDialogMode === "edit" ? editingRecordId : ""
       )
-      if (!confirmDuplicateFieldWarnings(duplicateWarnings)) return
+      const duplicateWarningMessage = getDuplicateFieldWarningMessage(duplicateWarnings)
+      if (
+        duplicateWarningMessage &&
+        !(await confirmDialog.confirm({ description: duplicateWarningMessage }))
+      ) {
+        return
+      }
 
       if (recordDialogMode === "create") {
         await createDynamicMasterDataRecord(activeConfig, normalizedRecord)
@@ -557,7 +565,11 @@ export default function MasterDataPage() {
         validRows,
         activeRows
       )
-      if (!confirmDuplicateFieldWarnings(duplicateWarnings)) {
+      const duplicateWarningMessage = getDuplicateFieldWarningMessage(duplicateWarnings)
+      if (
+        duplicateWarningMessage &&
+        !(await confirmDialog.confirm({ description: duplicateWarningMessage }))
+      ) {
         setImportProgress((current) => ({ ...current, open: false, status: "idle" }))
         return
       }
@@ -1091,6 +1103,7 @@ export default function MasterDataPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {confirmDialog.dialog}
     </div>
   )
 }
