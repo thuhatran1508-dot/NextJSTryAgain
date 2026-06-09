@@ -11,6 +11,7 @@ import {
   getDoc,
   getDocs,
   query,
+  serverTimestamp,
   where,
   writeBatch,
   type DocumentData,
@@ -66,6 +67,8 @@ const emptyUnitPriceData: UnitPriceListItem[] = []
 const emptyPicWhData: PICWHCodeListItem[] = []
 const emptyUnitCodeData: UnitCodeListItem[] = []
 const DUPLICATE_DOCUMENT_ID_SEPARATOR = "__"
+const DEFAULT_BULK_IMPORT_BATCH_SIZE = 400
+const DEFAULT_BULK_IMPORT_BATCH_DELAY_MS = 250
 
 export async function getCusCodeList(): Promise<CusCodeListItem[]> {
   return getFirestoreCollection<CusCodeListItem>("CusCodeList", emptyCusCodeData)
@@ -140,6 +143,10 @@ function sortByDocumentIdSuffix(records: DynamicMasterDataRecord[], baseDocument
     const rightId = String(right.id ?? "")
     return getDocumentIdSuffix(leftId, baseDocumentId) - getDocumentIdSuffix(rightId, baseDocumentId)
   })
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 export async function getDynamicMasterDataByBaseDocumentId(
@@ -264,6 +271,77 @@ export async function createDynamicMasterDataRecord(
     },
     documentId
   )
+}
+
+export async function createDynamicMasterDataRecords(
+  config: MasterCollectionConfig,
+  records: DynamicMasterDataRecord[],
+  options: {
+    documentIds?: string[]
+    batchSize?: number
+    delayMs?: number
+    onProgress?: (progress: { imported: number; total: number }) => void
+  } = {}
+) {
+  const db = getFirestoreSafe()
+  if (!db) {
+    throw new Error(
+      "Firebase is not configured. Please set NEXT_PUBLIC_FIREBASE_* environment variables."
+    )
+  }
+
+  const lookupKeyField = getLookupKeyField(config)
+  if (!lookupKeyField) {
+    throw new Error("Lookup key is required.")
+  }
+
+  const batchSize = Math.max(
+    1,
+    Math.min(options.batchSize ?? DEFAULT_BULK_IMPORT_BATCH_SIZE, 450)
+  )
+  const delayMs = Math.max(0, options.delayMs ?? DEFAULT_BULK_IMPORT_BATCH_DELAY_MS)
+  let imported = 0
+
+  for (let index = 0; index < records.length; index += batchSize) {
+    const batch = writeBatch(db)
+    const chunk = records.slice(index, index + batchSize)
+
+    chunk.forEach((record, chunkIndex) => {
+      const recordIndex = index + chunkIndex
+      const lookupKey = String(record[lookupKeyField] ?? "").trim()
+      if (!lookupKey) {
+        throw new Error("Lookup key is required.")
+      }
+
+      const baseDocumentId = makeSafeDocumentId(lookupKey)
+      const documentId = makeSafeDocumentId(options.documentIds?.[recordIndex] ?? baseDocumentId)
+      const documentRef = doc(db, config.collectionName, documentId)
+      const { id: _id, ...recordData } = record
+
+      batch.set(
+        documentRef,
+        {
+          ...recordData,
+          [lookupKeyField]: lookupKey,
+          documentId,
+          baseDocumentId,
+          createdAt: record.createdAt ?? serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      )
+    })
+
+    await batch.commit()
+    imported += chunk.length
+    options.onProgress?.({ imported, total: records.length })
+
+    if (delayMs > 0 && imported < records.length) {
+      await sleep(delayMs)
+    }
+  }
+
+  return imported
 }
 
 export async function updateDynamicMasterDataRecord(

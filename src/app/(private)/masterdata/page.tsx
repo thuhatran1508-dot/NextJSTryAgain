@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { ArrowDown, ArrowUp, Pencil, Plus, Search, Trash2 } from "lucide-react"
+import { ArrowDown, ArrowUp, Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import * as XLSX from "xlsx"
 
@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Progress } from "@/components/ui/progress"
 import {
   Table,
   TableBody,
@@ -44,6 +45,7 @@ import {
 import {
   applyDynamicMasterFieldChanges,
   createDynamicMasterDataRecord,
+  createDynamicMasterDataRecords,
   deleteAllDynamicMasterDataRecords,
   deleteDynamicMasterDataRecord,
   getDynamicMasterData,
@@ -61,6 +63,12 @@ const MASTER_DATA_CHANGED_STORAGE_KEY = "master-data:changed-at"
 
 type RecordDialogMode = "create" | "edit"
 type FieldDraft = MasterCollectionFieldConfig
+type ImportProgressState = {
+  open: boolean
+  status: "idle" | "parsing" | "validating" | "importing" | "refreshing" | "done"
+  imported: number
+  total: number
+}
 
 function notifyMasterDataChanged() {
   if (typeof window === "undefined") return
@@ -207,6 +215,13 @@ function exportRows(
   XLSX.writeFile(workbook, `${config.collectionName}.${extension}`)
 }
 
+function restoreScrollPosition(scrollY: number) {
+  if (typeof window === "undefined") return
+  window.requestAnimationFrame(() => {
+    window.scrollTo({ top: scrollY, left: window.scrollX, behavior: "auto" })
+  })
+}
+
 async function parseImportFile(file: File, config: MasterCollectionConfig) {
   const buffer = await file.arrayBuffer()
   const workbook = XLSX.read(buffer, { type: "array" })
@@ -251,6 +266,12 @@ export default function MasterDataPage() {
   const [editingRecordId, setEditingRecordId] = useState("")
   const [deleteTarget, setDeleteTarget] = useState<DynamicMasterDataRecord | null>(null)
   const [deleteAllTarget, setDeleteAllTarget] = useState<MasterCollectionConfig | null>(null)
+  const [importProgress, setImportProgress] = useState<ImportProgressState>({
+    open: false,
+    status: "idle",
+    imported: 0,
+    total: 0,
+  })
   const importInputRef = useRef<HTMLInputElement | null>(null)
 
   const activeConfig = useMemo(
@@ -505,13 +526,27 @@ export default function MasterDataPage() {
 
   async function importFile(file: File) {
     if (!activeConfig) return
+    const scrollY = typeof window === "undefined" ? 0 : window.scrollY
     setSaving(true)
+    setImportProgress({
+      open: true,
+      status: "parsing",
+      imported: 0,
+      total: 0,
+    })
     try {
       const rows = await parseImportFile(file, activeConfig)
+      setImportProgress({
+        open: true,
+        status: "validating",
+        imported: 0,
+        total: rows.length,
+      })
       const validRows: DynamicMasterDataRecord[] = []
       for (const [index, row] of rows.entries()) {
         const errors = validateRecord(activeConfig, row)
         if (errors.length) {
+          setImportProgress((current) => ({ ...current, open: false, status: "idle" }))
           toast.error(`${index + 2} 行目: ${errors[0]}`)
           return
         }
@@ -522,7 +557,10 @@ export default function MasterDataPage() {
         validRows,
         activeRows
       )
-      if (!confirmDuplicateFieldWarnings(duplicateWarnings)) return
+      if (!confirmDuplicateFieldWarnings(duplicateWarnings)) {
+        setImportProgress((current) => ({ ...current, open: false, status: "idle" }))
+        return
+      }
 
       const lookupKeyField = getLookupKeyField(activeConfig)
       const documentIds = await getNextDynamicMasterDocumentIds(
@@ -530,15 +568,52 @@ export default function MasterDataPage() {
         validRows.map((row) => normalizeText(row[lookupKeyField]))
       )
 
-      for (const [index, row] of validRows.entries()) {
-        await createDynamicMasterDataRecord(activeConfig, row, {
-          documentId: documentIds[index],
-        })
-      }
+      setImportProgress({
+        open: true,
+        status: "importing",
+        imported: 0,
+        total: validRows.length,
+      })
+      const importedCount = await createDynamicMasterDataRecords(activeConfig, validRows, {
+        documentIds,
+        onProgress: ({ imported, total }) => {
+          setImportProgress({
+            open: true,
+            status: "importing",
+            imported,
+            total,
+          })
+        },
+      })
+
+      setImportProgress({
+        open: true,
+        status: "refreshing",
+        imported: importedCount,
+        total: validRows.length,
+      })
       notifyMasterDataChanged()
-      await loadData()
-      toast.success(`${validRows.length} 件をインポートしました。`)
+      const nextRows = await getDynamicMasterData(activeConfig)
+      setRecordsByCollection((current) => ({
+        ...current,
+        [activeConfig.collectionName]: nextRows,
+      }))
+      restoreScrollPosition(scrollY)
+      setImportProgress({
+        open: true,
+        status: "done",
+        imported: importedCount,
+        total: validRows.length,
+      })
+      toast.success(`${importedCount} 件をインポートしました。`)
+      window.setTimeout(() => {
+        setImportProgress((current) => {
+          if (current.status !== "done") return current
+          return { ...current, open: false }
+        })
+      }, 1200)
     } catch (error) {
+      setImportProgress((current) => ({ ...current, open: false, status: "idle" }))
       toast.error(error instanceof Error ? error.message : "インポートに失敗しました。")
     } finally {
       setSaving(false)
@@ -764,6 +839,52 @@ export default function MasterDataPage() {
           データリスト設定がありません。
         </div>
       )}
+
+      <Dialog
+        open={importProgress.open}
+        onOpenChange={(open) => {
+          if (!open && saving) return
+          setImportProgress((current) => ({ ...current, open }))
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {importProgress.status === "done" ? "インポート完了" : "インポート中"}
+            </DialogTitle>
+            <DialogDescription>
+              {importProgress.status === "parsing"
+                ? "ファイルを読み込んでいます。"
+                : importProgress.status === "validating"
+                  ? "データを確認しています。"
+                  : importProgress.status === "refreshing"
+                    ? "新しいデータを表示するため更新しています。"
+                    : importProgress.status === "done"
+                      ? `${importProgress.imported} 件をインポートしました。`
+                      : `${importProgress.imported} / ${importProgress.total} 件をインポートしています。`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+              {importProgress.status === "done" ? null : (
+                <Loader2 className="size-4 animate-spin" />
+              )}
+              <span>
+                {importProgress.total > 0
+                  ? `${Math.round((importProgress.imported / importProgress.total) * 100)}%`
+                  : "準備中"}
+              </span>
+            </div>
+            <Progress
+              value={
+                importProgress.total > 0
+                  ? Math.round((importProgress.imported / importProgress.total) * 100)
+                  : 10
+              }
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={configDialogOpen} onOpenChange={setConfigDialogOpen}>
         <DialogContent>
