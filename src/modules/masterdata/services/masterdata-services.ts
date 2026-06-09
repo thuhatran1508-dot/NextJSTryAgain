@@ -69,6 +69,8 @@ const emptyUnitCodeData: UnitCodeListItem[] = []
 const DUPLICATE_DOCUMENT_ID_SEPARATOR = "__"
 const DEFAULT_BULK_IMPORT_BATCH_SIZE = 400
 const DEFAULT_BULK_IMPORT_BATCH_DELAY_MS = 250
+const DEFAULT_DOCUMENT_ID_LOOKUP_BATCH_SIZE = 20
+const DEFAULT_DOCUMENT_ID_LOOKUP_DELAY_MS = 150
 
 export async function getCusCodeList(): Promise<CusCodeListItem[]> {
   return getFirestoreCollection<CusCodeListItem>("CusCodeList", emptyCusCodeData)
@@ -206,21 +208,43 @@ async function getNextDynamicMasterDocumentId(
 
 export async function getNextDynamicMasterDocumentIds(
   config: Pick<MasterCollectionConfig, "collectionName">,
-  lookupKeys: string[]
+  lookupKeys: string[],
+  options: {
+    batchSize?: number
+    delayMs?: number
+    onProgress?: (progress: { checked: number; total: number }) => void
+  } = {}
 ) {
   const baseDocumentIds = lookupKeys.map((lookupKey) => makeSafeDocumentId(lookupKey))
   const uniqueBaseDocumentIds = [...new Set(baseDocumentIds.filter(Boolean))]
   const usedIdsByBase = new Map<string, Set<string>>()
-
-  await Promise.all(
-    uniqueBaseDocumentIds.map(async (baseDocumentId) => {
-      const existingRecords = await getDynamicMasterDataByBaseDocumentId(config, baseDocumentId)
-      usedIdsByBase.set(
-        baseDocumentId,
-        new Set(existingRecords.map((record) => String(record.id ?? "")))
-      )
-    })
+  const batchSize = Math.max(
+    1,
+    Math.min(options.batchSize ?? DEFAULT_DOCUMENT_ID_LOOKUP_BATCH_SIZE, 100)
   )
+  const delayMs = Math.max(0, options.delayMs ?? DEFAULT_DOCUMENT_ID_LOOKUP_DELAY_MS)
+  let checked = 0
+
+  for (let index = 0; index < uniqueBaseDocumentIds.length; index += batchSize) {
+    const chunk = uniqueBaseDocumentIds.slice(index, index + batchSize)
+
+    await Promise.all(
+      chunk.map(async (baseDocumentId) => {
+        const existingRecords = await getDynamicMasterDataByBaseDocumentId(config, baseDocumentId)
+        usedIdsByBase.set(
+          baseDocumentId,
+          new Set(existingRecords.map((record) => String(record.id ?? "")))
+        )
+      })
+    )
+
+    checked += chunk.length
+    options.onProgress?.({ checked, total: uniqueBaseDocumentIds.length })
+
+    if (delayMs > 0 && checked < uniqueBaseDocumentIds.length) {
+      await sleep(delayMs)
+    }
+  }
 
   return baseDocumentIds.map((baseDocumentId) => {
     if (!baseDocumentId) return ""

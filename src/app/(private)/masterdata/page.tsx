@@ -66,7 +66,14 @@ type RecordDialogMode = "create" | "edit"
 type FieldDraft = MasterCollectionFieldConfig
 type ImportProgressState = {
   open: boolean
-  status: "idle" | "parsing" | "validating" | "importing" | "refreshing" | "done"
+  status:
+    | "idle"
+    | "parsing"
+    | "validating"
+    | "checkingExisting"
+    | "importing"
+    | "refreshing"
+    | "done"
   imported: number
   total: number
 }
@@ -635,9 +642,25 @@ export default function MasterDataPage() {
       }
 
       const lookupKeyField = getLookupKeyField(activeConfig)
+      setImportProgress({
+        open: true,
+        status: "checkingExisting",
+        imported: 0,
+        total: validRows.length,
+      })
       const documentIds = await getNextDynamicMasterDocumentIds(
         activeConfig,
-        validRows.map((row) => normalizeText(row[lookupKeyField]))
+        validRows.map((row) => normalizeText(row[lookupKeyField])),
+        {
+          onProgress: ({ checked, total }) => {
+            setImportProgress({
+              open: true,
+              status: "checkingExisting",
+              imported: checked,
+              total,
+            })
+          },
+        }
       )
 
       setImportProgress({
@@ -951,6 +974,8 @@ export default function MasterDataPage() {
                 ? "ファイルを読み込んでいます。"
                 : importProgress.status === "validating"
                   ? "データを確認しています。"
+                  : importProgress.status === "checkingExisting"
+                    ? "登録済みデータを確認しています。"
                   : importProgress.status === "refreshing"
                     ? "新しいデータを表示するため更新しています。"
                     : importProgress.status === "done"
