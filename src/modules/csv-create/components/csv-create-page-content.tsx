@@ -230,6 +230,49 @@ function makeExportName(sourceFileName?: string) {
   return `${baseName}-${stamp}.csv`
 }
 
+function mergeExcelImportResults(results: ExcelImportResult[]): ExcelImportResult {
+  if (!results.length) {
+    return {
+      sourceFileName: "",
+      sheetValues: {},
+      sourceRows: [],
+      totalRowsRead: 0,
+      validRows: 0,
+      issues: [],
+    }
+  }
+
+  const sourceFileName =
+    results.length === 1
+      ? results[0].sourceFileName
+      : `${results.length} files: ${results.map((result) => result.sourceFileName).join(", ")}`
+  const sheetValues: ExcelImportResult["sheetValues"] = {}
+  const sourceRows: ExcelImportResult["sourceRows"] = []
+  const issues: ExcelImportResult["issues"] = []
+
+  results.forEach((result, fileIndex) => {
+    Object.entries(result.sheetValues).forEach(([sheetName, values]) => {
+      sheetValues[`${result.sourceFileName}::${sheetName}`] = values
+    })
+    result.sourceRows.forEach((row) => {
+      sourceRows.push({
+        ...row,
+        id: `${fileIndex + 1}-${row.id}`,
+      })
+    })
+    issues.push(...result.issues)
+  })
+
+  return {
+    sourceFileName,
+    sheetValues,
+    sourceRows,
+    totalRowsRead: sourceRows.length,
+    validRows: sourceRows.length,
+    issues,
+  }
+}
+
 function getRowValueByColumnName(row: CsvWorkingRow, columnName: string) {
   const normalizedColumnName = columnName.trim()
   if (!normalizedColumnName) return ""
@@ -693,11 +736,12 @@ export function CsvCreatePageContent() {
     }
   }
 
-  async function handleFile(file: File) {
+  async function handleFiles(files: File[]) {
     if (!sessionOpen) {
       toast.error("先に新規セッションを開始してください。")
       return
     }
+    if (!files.length) return
     if (!selectedMapping) {
       toast.error("マッピングを選択してください。")
       return
@@ -709,7 +753,11 @@ export function CsvCreatePageContent() {
 
     setProcessing(true)
     try {
-      const excel = await readExcelByMapping(file, selectedMapping)
+      const results: ExcelImportResult[] = []
+      for (const file of files) {
+        results.push(await readExcelByMapping(file, selectedMapping))
+      }
+      const excel = mergeExcelImportResults(results)
       const nextMasterData = await loadMasterDataStoreForMapping({
         mapping: selectedMapping,
         excel,
@@ -724,7 +772,7 @@ export function CsvCreatePageContent() {
       })
       const nextIssues = validateCsvRows(result.rows, result.issues)
       setLastExcel(excel)
-      setSourceFileName(file.name)
+      setSourceFileName(excel.sourceFileName)
       setRows(result.rows)
       setDraftRows(cloneRows(result.rows))
       setIssues(nextIssues)
@@ -734,7 +782,7 @@ export function CsvCreatePageContent() {
       setMasterDataDraft({})
       setSavedMasterDataEditKeys(new Set())
       setHasUnsavedChanges(false)
-      toast.success("インポートしました。")
+      toast.success(`${files.length} ファイルをインポートしました。`)
     } catch {
       toast.error("ファイルを読み込めませんでした。")
     } finally {
@@ -1309,10 +1357,11 @@ export function CsvCreatePageContent() {
             <Input
               ref={fileInputRef}
               type="file"
+              multiple
               accept=".xls,.xlsx,.xlsm,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               onChange={(event) => {
-                const file = event.target.files?.[0]
-                if (file) void handleFile(file)
+                const files = Array.from(event.target.files ?? [])
+                if (files.length) void handleFiles(files)
               }}
               disabled={!sessionOpen || !selectedMapping || processing}
               className="max-w-xl"
