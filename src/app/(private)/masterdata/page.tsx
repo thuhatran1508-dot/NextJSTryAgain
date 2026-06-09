@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { ArrowDown, ArrowUp, Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react"
+import { ArrowDown, ArrowUp, Copy, Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import * as XLSX from "xlsx"
 
@@ -105,6 +105,19 @@ function getFieldConfigs(config: MasterCollectionConfig) {
     required: false,
     unique: false,
   }))
+}
+
+function getCopyCollectionName(config: MasterCollectionConfig, configs: MasterCollectionConfig[]) {
+  const existingNames = new Set(configs.map((item) => item.collectionName))
+  const baseName = `${config.collectionName}Copy`
+  if (!existingNames.has(baseName)) return baseName
+
+  for (let index = 2; index < 1000; index += 1) {
+    const candidate = `${baseName}${index}`
+    if (!existingNames.has(candidate)) return candidate
+  }
+
+  return `${baseName}${Date.now()}`
 }
 
 function makeEmptyRecord(config: MasterCollectionConfig): DynamicMasterDataRecord {
@@ -335,6 +348,53 @@ export default function MasterDataPage() {
       fields: getFieldConfigs(config),
     })
     setConfigDialogOpen(true)
+  }
+
+  async function copyActiveConfig() {
+    if (!activeConfig) return
+    const shouldCopy = await confirmDialog.confirm({
+      title: "Sao chép data list",
+      description: `Bạn có muốn sao chép cấu trúc của "${activeConfig.displayName}" không?\nHệ thống chỉ sao chép các field, không sao chép dữ liệu bên trong collection.`,
+      confirmText: "Sao chép",
+      cancelText: "Hủy",
+    })
+    if (!shouldCopy) return
+
+    const collectionName = getCopyCollectionName(activeConfig, configs)
+    setEditingConfig(null)
+    setConfigDraft({
+      collectionName,
+      displayName: `${activeConfig.displayName} bản sao`,
+      fields: getFieldConfigs(activeConfig),
+    })
+    setConfigDialogOpen(true)
+  }
+
+  async function deleteActiveConfig() {
+    if (!activeConfig) return
+    const shouldDelete = await confirmDialog.confirm({
+      title: "Xóa data list",
+      description: `Bạn có chắc chắn muốn xóa data list "${activeConfig.displayName}" không?\nThao tác này chỉ xóa data list khỏi màn hình quản lý, không xóa các document đang có trong collection.`,
+      confirmText: "Xóa",
+      cancelText: "Hủy",
+    })
+    if (!shouldDelete) return
+
+    setSaving(true)
+    try {
+      await masterCollectionConfigRepository.delete(activeConfig.collectionName)
+      setConfigDialogOpen(false)
+      setActiveCollection(
+        configs.find((config) => config.collectionName !== activeConfig.collectionName)
+          ?.collectionName ?? ""
+      )
+      await loadData()
+      toast.success("Đã xóa data list.")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể xóa data list.")
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function saveConfig() {
@@ -674,6 +734,28 @@ export default function MasterDataPage() {
                 </button>
               ))}
             </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 border-t pt-3">
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                onClick={() => void deleteActiveConfig()}
+                disabled={!activeConfig || saving}
+              >
+                <Trash2 className="size-4" />
+                Xóa
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => void copyActiveConfig()}
+                disabled={!activeConfig || saving}
+              >
+                <Copy className="size-4" />
+                Sao chép
+              </Button>
+            </div>
           </div>
 
           <div>
@@ -901,14 +983,14 @@ export default function MasterDataPage() {
       <Dialog open={configDialogOpen} onOpenChange={setConfigDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>データリスト設定</DialogTitle>
+            <DialogTitle>Cấu hình data list</DialogTitle>
             <DialogDescription>
-              先頭のフィールドがキー項目として使われます。
+              Field đầu tiên sẽ được dùng làm khóa chính của data list.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
             <div className="grid gap-2">
-              <Label>データリストID</Label>
+              <Label>ID data list</Label>
               <Input
                 value={configDraft.collectionName}
                 onChange={(event) =>
@@ -922,7 +1004,7 @@ export default function MasterDataPage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label>データリスト名</Label>
+              <Label>Tên data list</Label>
               <Input
                 value={configDraft.displayName}
                 onChange={(event) =>
@@ -932,10 +1014,10 @@ export default function MasterDataPage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label>フィールド</Label>
+              <Label>Field</Label>
               <div className="grid gap-2">
                 <div className="hidden grid-cols-[1fr_132px] gap-2 text-xs font-medium text-muted-foreground sm:grid">
-                  <div>フィールド名</div>
+                  <div>Tên field</div>
                   <div />
                 </div>
                 {configDraft.fields.map((field, index) => (
@@ -943,7 +1025,7 @@ export default function MasterDataPage() {
                     <Input
                       value={field.name}
                       onChange={(event) => updateConfigField(index, event.target.value)}
-                      placeholder={index === 0 ? "キー項目" : "フィールド名"}
+                      placeholder={index === 0 ? "Field khóa" : "Tên field"}
                     />
                     <div className="flex gap-1">
                       <Button
@@ -979,7 +1061,7 @@ export default function MasterDataPage() {
               </div>
               <Button type="button" variant="outline" onClick={addConfigField}>
                 <Plus className="size-4" />
-                フィールド追加
+                Thêm field
               </Button>
             </div>
           </div>
@@ -992,16 +1074,16 @@ export default function MasterDataPage() {
                   onClick={() => setDeleteConfigTarget(editingConfig)}
                   disabled={saving}
                 >
-                  データリスト削除
+                  Xóa data list
                 </Button>
               ) : null}
             </div>
             <div className="flex gap-2">
               <Button type="button" variant="outline" onClick={() => setConfigDialogOpen(false)}>
-                キャンセル
+                Hủy
               </Button>
               <Button type="button" onClick={saveConfig} disabled={saving}>
-                保存
+                Lưu
               </Button>
             </div>
           </DialogFooter>
@@ -1059,14 +1141,14 @@ export default function MasterDataPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>データリストを削除しますか。</AlertDialogTitle>
+            <AlertDialogTitle>Xóa data list?</AlertDialogTitle>
             <AlertDialogDescription>
-              画面の一覧からこのデータリストを削除します。登録済みのデータは削除されません。
+              Data list này sẽ bị xóa khỏi danh sách trên màn hình. Các document đã đăng ký trong collection sẽ không bị xóa.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>キャンセル</AlertDialogCancel>
-            <AlertDialogAction onClick={deleteConfig}>削除</AlertDialogAction>
+            <AlertDialogCancel>Hủy</AlertDialogCancel>
+            <AlertDialogAction onClick={deleteConfig}>Xóa</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
