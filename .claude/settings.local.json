@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); deps={**d.get\\('dependencies',{}\\), **d.get\\('devDependencies',{}\\)}; [print\\(k,v\\) for k in ['recharts','chart.js','react-chartjs-2','@tanstack/react-table','zustand']]\")"
     ]
   }
 }
